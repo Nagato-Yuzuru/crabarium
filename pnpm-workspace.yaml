@@ -1,0 +1,9 @@
+# Hold new releases for 7 days before install.
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  # The engine floor in hooks/core/version.ts tracks the newest release.
+  - '@anthropic-ai/claude-code'
+  - '@anthropic-ai/claude-code-*'
+
+allowBuilds:
+  '@anthropic-ai/claude-code': true

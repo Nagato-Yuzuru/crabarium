@@ -1,0 +1,72 @@
+# Hooks check and do not fix: `pnpm fix` applies the fixes.
+default_install_hook_types = ["pre-commit", "commit-msg", "pre-push"]
+default_stages = ["pre-commit"]
+
+[[repos]]
+repo = "builtin"
+
+[[repos.hooks]]
+id = "check-merge-conflict"
+
+[[repos.hooks]]
+id = "check-added-large-files"
+
+[[repos.hooks]]
+id = "detect-private-key"
+
+[[repos.hooks]]
+id = "check-yaml"
+
+[[repos.hooks]]
+id = "check-toml"
+
+# The commands come from PATH: the shell that runs git supplies the tools
+# (mise in this project), and the hooks do not choose versions.
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "git-cliff"
+name = "conventional commit (git-cliff)"
+language = "system"
+stages = ["commit-msg"]
+# git-cliff reads commits, and the new commit does not exist yet. So the hook
+# writes the message into a commit object that no ref points to (git gc
+# removes it later) and checks that one commit against the [git] rules in
+# cliff.toml. The message file still holds the comment lines and, after
+# `git commit -v`, the diff below the scissors line: the hook removes both.
+shell = "sh"
+entry = '''
+probe=$(sed '/^# -* >8 -*$/,$d' "$1" | git stripspace --strip-comments | git commit-tree "HEAD^{tree}" -p HEAD)
+git cliff "HEAD..$probe" > /dev/null
+'''
+
+[[repos.hooks]]
+id = "oxfmt"
+name = "oxfmt"
+language = "system"
+entry = "pnpm exec oxfmt --check --no-error-on-unmatched-pattern"
+types_or = ["ts", "tsx", "javascript", "json", "markdown", "yaml", "toml"]
+
+[[repos.hooks]]
+id = "oxlint"
+name = "oxlint"
+language = "system"
+entry = "pnpm exec oxlint --deny-warnings"
+types_or = ["ts", "tsx", "javascript"]
+
+[[repos.hooks]]
+id = "actionlint"
+name = "actionlint"
+language = "system"
+entry = "actionlint"
+files = '^\.github/workflows/.*\.ya?ml$'
+
+[[repos.hooks]]
+id = "verify"
+name = "pnpm verify"
+language = "system"
+entry = "pnpm verify"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
