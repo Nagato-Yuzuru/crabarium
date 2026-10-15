@@ -1,0 +1,13 @@
+{
+  "name": "crabarium",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "validate": "claude plugin validate .",
+    "test": "claude plugin test ."
+  },
+  "devDependencies": {
+    "typescript": "5.6.3"
+  }
+}

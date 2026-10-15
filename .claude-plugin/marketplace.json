@@ -1,0 +1,13 @@
+{
+  "name": "crabarium",
+  "description": "crabarium: a Claude Code mod that shows the main session and its subagents in a pane",
+  "owner": {
+    "name": "Nagato Yuzuru"
+  },
+  "plugins": [
+    {
+      "name": "crabarium",
+      "source": "./"
+    }
+  ]
+}
