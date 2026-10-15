@@ -1,9 +1,10 @@
 // View: draws the pane from the state. It reads; it never writes.
-import { atom, read } from 'claude-code'
-import type { On } from 'claude-code'
 
-import { initialSession } from '../core/session'
+import type { On } from 'claude-code'
+import { atom, read } from 'claude-code'
+
 import type { MainSession } from '../core/session'
+import { initialSession } from '../core/session'
 import { PANE_ID } from '../state'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)

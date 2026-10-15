@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
+import { usageEvent } from '../hooks/collect'
 import { initialSession, reduceSession } from '../hooks/core/session'
 import { isSupportedEngine } from '../hooks/core/version'
-import { usageEvent } from '../hooks/collect'
 import { sessionRows } from '../hooks/view/pane'
 
 describe('reduceSession', () => {

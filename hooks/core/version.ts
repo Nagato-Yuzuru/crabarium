@@ -16,8 +16,6 @@ export function isSupportedEngine(version: string, minimum: string = MIN_ENGINE_
   const have = parse(version)
   const need = parse(minimum)
   if (!have || !need) return false
-  for (let i = 0; i < 3; i++) {
-    if (have[i]! !== need[i]!) return have[i]! > need[i]!
-  }
-  return true
+  const order = have[0] - need[0] || have[1] - need[1] || have[2] - need[2]
+  return order >= 0
 }

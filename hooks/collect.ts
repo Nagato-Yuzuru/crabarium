@@ -1,10 +1,11 @@
 // Event collection: the only layer that hooks engine events. It turns each
 // event into a domain event and applies it to the state through the core.
-import { atom, update } from 'claude-code'
-import type { EngineInterface, On, SessionUsage, Timer } from 'claude-code'
 
-import { initialSession, reduceSession } from './core/session'
+import type { EngineInterface, On, SessionUsage, Timer } from 'claude-code'
+import { atom, update } from 'claude-code'
+
 import type { SessionEvent } from './core/session'
+import { initialSession, reduceSession } from './core/session'
 import { isSupportedEngine, MIN_ENGINE_VERSION } from './core/version'
 import { PANE_ID } from './state'
 
@@ -72,10 +73,10 @@ export function registerCollect(on: On): void {
   })
 
   // An observer: if it fails, the close goes on.
-  on('ui.close', ($, e, next) => {
+  on('ui.close', (_$, e, next) => {
     if (e.id === PANE_ID) stopPoll()
     return next(e)
-  }).catch(($, e, next) => next(e))
+  }).catch((_$, e, next) => next(e))
 
   on('turn.step', async function* ($, e, next) {
     // A step with an agentId belongs to a subagent, not the main session.

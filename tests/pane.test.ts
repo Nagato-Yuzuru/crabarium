@@ -1,6 +1,6 @@
-import { expect, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
+import { expect, test } from 'claude-code/testing'
 
 import { PANE_ID } from '../hooks/state'
 
@@ -15,6 +15,7 @@ const paneProps = {
 
 // The model request beneath the plugin: an empty answer is enough here.
 function answerSteps(on: On): void {
+  // oxlint-disable-next-line require-yield -- turn.step hooks are generators; this one answers with its return value alone.
   on('turn.step', async function* (_$, e) {
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null } as never
   })
