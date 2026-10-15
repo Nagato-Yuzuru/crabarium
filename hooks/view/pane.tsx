@@ -7,6 +7,7 @@ import type { AgentBoard, AgentRow, AgentStatus } from '../core/agents'
 import { initialSession } from '../core/session'
 import type { MainSession } from '../core/session'
 import { PANE_ID } from '../state'
+import { defaultAvatar } from './avatar'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
@@ -72,6 +73,9 @@ export function agentGroups(board: AgentBoard): readonly AgentGroup[] {
 export function registerPane(on: On): void {
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
+    // The terminal draws the character with half blocks; other surfaces get it with the Svg renderer.
+    const raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : undefined
+    const avatar = defaultAvatar()
     const rows = sessionRows(await read($, session))
     const groups = agentGroups(await read($, agents))
     const labelWidth = Math.max(...rows.map(([label]) => label.length)) + 2
@@ -91,15 +95,24 @@ export function registerPane(on: On): void {
           <Box key={group.title} flexDirection="column" marginTop={1}>
             <Text weight="semibold">{`${group.title} (${group.lines.length})`}</Text>
             {group.lines.map(l => (
-              <Box key={l.id} flexDirection="column">
-                <Box>
-                  <Box flexGrow={1}>
-                    <Text wrap="truncate-end">{l.description}</Text>
+              <Box key={l.id} marginTop={raster === undefined ? 0 : 1} alignItems="center">
+                {/* A Raster paints all its columns even where the layout gives it fewer. So its column
+                    has a fixed width and does not shrink; the text column gives way instead. */}
+                {raster !== undefined && (
+                  <Box width={avatar.columns} flexShrink={0} marginRight={1}>
+                    {h(raster, { key: `avatar-${l.id}`, ...avatar })}
                   </Box>
-                  <Text color={STATUS_COLOR[l.status]}>{` ${l.status} `}</Text>
-                  <Text tabular>{l.duration}</Text>
+                )}
+                <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                  <Box>
+                    <Box flexGrow={1}>
+                      <Text wrap="truncate-end">{l.description}</Text>
+                    </Box>
+                    <Text color={STATUS_COLOR[l.status]}>{` ${l.status} `}</Text>
+                    <Text tabular>{l.duration}</Text>
+                  </Box>
+                  <Text dimColor wrap="truncate-end">{`  ${l.detail}`}</Text>
                 </Box>
-                <Text dimColor wrap="truncate-end">{`  ${l.detail}`}</Text>
               </Box>
             ))}
           </Box>

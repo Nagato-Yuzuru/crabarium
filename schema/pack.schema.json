@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Nagato-Yuzuru/crabarium/blob/main/schema/pack.schema.json",
+  "title": "crabarium character pack",
+  "type": "object",
+  "required": [
+    "formatVersion",
+    "name",
+    "author",
+    "license",
+    "grid",
+    "palette",
+    "groups"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "formatVersion": {
+      "const": 1,
+      "description": "The pack format version. This schema is version 1."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$",
+      "description": "The pack name that `/crabarium pack <name>` selects."
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "An SPDX license expression, for example MIT."
+    },
+    "attribution": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Where the art comes from."
+    },
+    "notice": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "A notice that the README and the pack list show."
+    },
+    "grid": {
+      "type": "object",
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        }
+      }
+    },
+    "palette": {
+      "$ref": "#/$defs/palette"
+    },
+    "anchors": {
+      "type": "object",
+      "description": "Named points where parts attach, for example head.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          },
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          }
+        ],
+        "minItems": 2,
+        "maxItems": 2,
+        "description": "[x, y] in pixels from the top left."
+      }
+    },
+    "groups": {
+      "type": "object",
+      "description": "The body, in groups that a motion can move or hide. The groups are drawn in this order.",
+      "minProperties": 1,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "at",
+          "rows"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 31
+              },
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 31
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "[x, y] in pixels from the top left."
+          },
+          "rows": {
+            "$ref": "#/$defs/rows"
+          }
+        }
+      }
+    },
+    "parts": {
+      "type": "object",
+      "description": "Parts by slot (hat, held, back), then by name. They are drawn after the groups.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "required": [
+            "anchor",
+            "pivot",
+            "rows"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "anchor": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$",
+              "description": "The anchor that the pivot goes to."
+            },
+            "pivot": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 31
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 31
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "The point of the part, from its top left, that goes on the anchor."
+            },
+            "rows": {
+              "$ref": "#/$defs/rows"
+            },
+            "palette": {
+              "$ref": "#/$defs/palette"
+            }
+          }
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parts": {
+          "type": "object",
+          "description": "The part that each slot shows when no rule selects one.",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "palette": {
+      "type": "object",
+      "description": "One character for each color. \".\" is transparent and cannot be a key.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[!-~]$",
+        "not": {
+          "const": "."
+        }
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^#[0-9a-fA-F]{6}$",
+        "description": "A color as #rrggbb."
+      },
+      "maxProperties": 64
+    },
+    "rows": {
+      "type": "array",
+      "description": "Pixel rows, top first. Each character is a palette key or \".\" for transparent.",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32
+      }
+    }
+  }
+}

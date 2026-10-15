@@ -76,5 +76,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await pane.findAll({ type: 'Text', text: '5s' })).toHaveLength(1)
     expect(await pane.findAll({ type: 'Text', text: '3s' })).toHaveLength(1)
     expect(await pane.findAll({ type: 'Text', text: 'refused task' })).toHaveLength(0)
+    // One character for each row on the terminal; the Svg renderer brings it to the other surfaces.
+    expect(await pane.findAll({ type: 'Raster' })).toHaveLength(surface === 'terminal' ? 2 : 0)
   })
 }

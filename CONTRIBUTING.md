@@ -22,14 +22,15 @@ This starts Claude Code with the mod loaded from this folder. The session reload
 
 ## Commands
 
-| Command          | What it does                                                            |
-| ---------------- | ----------------------------------------------------------------------- |
-| `pnpm check`     | Runs oxfmt (format and import sort), oxlint, and actionlint as a check. |
-| `pnpm fix`       | Formats the files and applies the safe oxlint fixes.                    |
-| `pnpm typecheck` | Type-checks the mod with TypeScript 7 against the engine types.         |
-| `pnpm validate`  | Reads the mod as the engine does and reports what it refuses.           |
-| `pnpm test`      | Runs the `*.test.ts` files against the engine.                          |
-| `pnpm verify`    | Runs all of the above checks.                                           |
+| Command          | What it does                                                       |
+| ---------------- | ------------------------------------------------------------------ |
+| `pnpm gen`       | Writes `schema/pack.schema.json` and `hooks/packs.generated.ts`.   |
+| `pnpm check`     | Runs oxfmt, oxlint, actionlint, and `pnpm gen --check` as a check. |
+| `pnpm fix`       | Formats the files and applies the safe oxlint fixes.               |
+| `pnpm typecheck` | Type-checks the mod with TypeScript 7 against the engine types.    |
+| `pnpm validate`  | Reads the mod as the engine does and reports what it refuses.      |
+| `pnpm test`      | Runs the `*.test.ts` files against the engine.                     |
+| `pnpm verify`    | Runs all of the above checks.                                      |
 
 The engine version for `dev`, `validate`, and `test` is the `@anthropic-ai/claude-code` version in `package.json`. Keep it equal to or later than `MIN_ENGINE_VERSION` in `hooks/core/version.ts`.
 
@@ -52,3 +53,7 @@ On a pull request, the `autofix.ci` workflow runs oxfmt and `oxlint --fix`, and 
 ## Dependency updates
 
 Renovate updates the npm packages, the tools in `mise.toml` and `mise.lock`, and the GitHub Actions digests. It waits 7 days after a release, as `pnpm-workspace.yaml` and `mise.toml` do. `@anthropic-ai/claude-code` has no wait. An update of it does not change `MIN_ENGINE_VERSION`: change that by hand when the mod needs a newer engine.
+
+## Character packs
+
+The pack format has one source: the JSON Schema object in `hooks/core/pack/schema.ts`. After you change it, or a file in `packs/`, run `pnpm gen`. `pnpm check` fails when a generated file is out of date. It also runs each fixture in `tests/fixtures/packs.ts` through Ajv, so the published schema and the mod's own validator must agree.
