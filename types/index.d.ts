@@ -22,6 +22,8 @@ export type AgentRow = {
   /** A teammate goes idle between turns, so a turn end does not end it. */
   isTeammate: boolean
   status: AgentStatus
+  /** When the status last changed. A one-shot motion, such as a fail pose, plays from here. */
+  statusAt: number
   startedAt: number
   endedAt: number | null
 }

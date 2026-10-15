@@ -1,4 +1,7 @@
 // The character art that the pane draws for an agent row.
+import type { AgentRow } from '../core/agents'
+import { characterPose } from '../core/character'
+import type { MotionMode } from '../core/character'
 import { compose, parsePackText } from '../core/pack/pack'
 import type { Pack } from '../core/pack/pack'
 import { builtinPackTexts } from '../packs.generated'
@@ -17,13 +20,26 @@ export function builtinPack(name: string): Pack {
 
 export type RasterImage = { columns: number; rows: number; cells: string }
 
-let cached: RasterImage | undefined
+/** A character as Raster props, and the time of its next frame change (`null`: it stands still). */
+export type AvatarFrame = { image: RasterImage; nextAt: number | null }
 
-/** The default character as Raster props. Each agent shows the same one until avatar selection exists. */
-export function defaultAvatar(): RasterImage {
-  if (cached === undefined) {
-    const { columns, rows, words } = halfBlockCells(compose(builtinPack(DEFAULT_PACK)))
-    cached = { columns, rows, cells: cellsBase64(words) }
+let pack: Pack | undefined
+// One entry for each pose. Part motions multiply the poses, so the cache
+// starts again when it is full.
+const images = new Map<string, RasterImage>()
+const MAX_IMAGES = 1024
+
+/** The default character of an agent at `now`. Each agent uses the default pack until avatar selection exists. */
+export function avatarFrame(row: AgentRow, now: number, mode: MotionMode): AvatarFrame {
+  pack ??= builtinPack(DEFAULT_PACK)
+  const selection = pack.defaults?.parts ?? {}
+  const { key, pose, nextAt } = characterPose(pack, selection, row, now, mode)
+  let image = images.get(key)
+  if (image === undefined) {
+    if (images.size >= MAX_IMAGES) images.clear()
+    const { columns, rows, words } = halfBlockCells(compose(pack, selection, pose))
+    image = { columns, rows, cells: cellsBase64(words) }
+    images.set(key, image)
   }
-  return cached
+  return { image, nextAt }
 }

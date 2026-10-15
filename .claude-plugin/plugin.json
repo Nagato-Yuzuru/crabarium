@@ -2,7 +2,18 @@
   "name": "crabarium",
   "version": "0.1.0",
   "description": "A pane that shows the main session and its subagents, with an animated pixel character for each agent",
-  "author": { "name": "Nagato Yuzuru" },
+  "author": {
+    "name": "Nagato Yuzuru"
+  },
   "license": "MIT",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "motion": {
+      "type": "string",
+      "title": "Character motion",
+      "description": "full: the characters move. reduced: each character shows one still pose for its state. off: the characters do not change.",
+      "default": "full",
+      "options": ["full", "reduced", "off"]
+    }
+  }
 }

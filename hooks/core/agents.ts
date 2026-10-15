@@ -41,8 +41,8 @@ const STATUS_OF_TURN_END: Readonly<Record<TurnEndReason, AgentStatus>> = {
 // does not reopen an ended row; it can only correct how the row ended.
 function withStatus(row: AgentRow, status: AgentStatus, at: number): AgentRow {
   if (row.status === status) return row
-  if (isEnded(row.status)) return isEnded(status) ? { ...row, status } : row
-  return { ...row, status, endedAt: isEnded(status) ? at : null }
+  if (isEnded(row.status)) return isEnded(status) ? { ...row, status, statusAt: at } : row
+  return { ...row, status, statusAt: at, endedAt: isEnded(status) ? at : null }
 }
 
 function mapRows(rows: readonly AgentRow[], fn: (row: AgentRow) => AgentRow): readonly AgentRow[] {
@@ -54,7 +54,7 @@ export function reduceAgents(state: AgentBoard, event: AgentEvent): AgentBoard {
   switch (event.kind) {
     case 'agent-spawned': {
       const { kind: _kind, at, ...fields } = event
-      const row: AgentRow = { ...fields, status: 'running', startedAt: at, endedAt: null }
+      const row: AgentRow = { ...fields, status: 'running', statusAt: at, startedAt: at, endedAt: null }
       const rest = state.rows.filter(r => r.id !== event.id)
       return { now: at, rows: [...rest, row] }
     }
