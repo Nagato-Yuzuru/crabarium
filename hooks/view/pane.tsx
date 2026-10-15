@@ -1,13 +1,15 @@
 // View: draws the pane from the state. It reads; it never writes.
-
-import type { On } from 'claude-code'
 import { atom, read } from 'claude-code'
+import type { On, ThemeKey } from 'claude-code'
 
-import type { MainSession } from '../core/session'
+import { durationMs, initialAgents, isEnded } from '../core/agents'
+import type { AgentBoard, AgentRow, AgentStatus } from '../core/agents'
 import { initialSession } from '../core/session'
+import type { MainSession } from '../core/session'
 import { PANE_ID } from '../state'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)
+const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 
 const UNKNOWN = '—'
 
@@ -19,21 +21,87 @@ export function sessionRows(s: MainSession): ReadonlyArray<readonly [label: stri
   ]
 }
 
+function pad(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+export function formatDuration(ms: number | null): string {
+  if (ms === null) return UNKNOWN
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${pad(s % 60)}s`
+  return `${Math.floor(s / 3600)}h ${pad(Math.floor(s / 60) % 60)}m`
+}
+
+const STATUS_COLOR: Readonly<Record<AgentStatus, ThemeKey>> = {
+  pending: 'inactive',
+  running: 'claude',
+  waiting: 'warning',
+  idle: 'inactive',
+  completed: 'success',
+  failed: 'error',
+  killed: 'warning',
+}
+
+export type AgentLine = {
+  id: string
+  description: string
+  detail: string
+  status: AgentStatus
+  duration: string
+}
+
+export type AgentGroup = { title: 'Running' | 'Finished'; lines: readonly AgentLine[] }
+
+/** The agents split into live and ended groups, in spawn order. An empty group is left out. */
+export function agentGroups(board: AgentBoard): readonly AgentGroup[] {
+  const line = (row: AgentRow): AgentLine => ({
+    id: row.id,
+    description: row.description,
+    detail: `${row.type} · ${row.model}`,
+    status: row.status,
+    duration: formatDuration(durationMs(row, board.now)),
+  })
+  const groups: AgentGroup[] = [
+    { title: 'Running', lines: board.rows.filter(r => !isEnded(r.status)).map(line) },
+    { title: 'Finished', lines: board.rows.filter(r => isEnded(r.status)).map(line) },
+  ]
+  return groups.filter(g => g.lines.length > 0)
+}
+
 export function registerPane(on: On): void {
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     const rows = sessionRows(await read($, session))
+    const groups = agentGroups(await read($, agents))
     const labelWidth = Math.max(...rows.map(([label]) => label.length)) + 2
 
     return (
       <Box flexDirection="column">
-        <Text bold>Main session</Text>
+        <Text weight="semibold">Main session</Text>
         {rows.map(([label, value]) => (
-          <Box>
+          <Box key={label}>
             <Box width={labelWidth}>
               <Text dimColor>{label}</Text>
             </Box>
             <Text>{value}</Text>
+          </Box>
+        ))}
+        {groups.map(group => (
+          <Box key={group.title} flexDirection="column" marginTop={1}>
+            <Text weight="semibold">{`${group.title} (${group.lines.length})`}</Text>
+            {group.lines.map(l => (
+              <Box key={l.id} flexDirection="column">
+                <Box>
+                  <Box flexGrow={1}>
+                    <Text wrap="truncate-end">{l.description}</Text>
+                  </Box>
+                  <Text color={STATUS_COLOR[l.status]}>{` ${l.status} `}</Text>
+                  <Text tabular>{l.duration}</Text>
+                </Box>
+                <Text dimColor wrap="truncate-end">{`  ${l.detail}`}</Text>
+              </Box>
+            ))}
           </Box>
         ))}
       </Box>
