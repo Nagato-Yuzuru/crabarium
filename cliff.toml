@@ -1,0 +1,51 @@
+# git-cliff configuration: https://git-cliff.org/docs/configuration
+# The commit-msg hook also checks each new commit message against [git].
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+"""
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
+            {% if commit.breaking %}[**breaking**] {% endif %}\
+            {{ commit.message | upper_first }}\
+    {% endfor %}
+{% endfor %}
+"""
+trim = true
+
+[git]
+conventional_commits = true
+# Fail on a commit that is not a Conventional Commit, unless a parser skips it.
+require_conventional = true
+# Fail on a commit whose type no parser below lists.
+fail_on_unmatched_commit = true
+protect_breaking_commits = true
+commit_parsers = [
+  # Subjects that git writes itself.
+  { message = "^(Merge|Revert) ", skip = true },
+  { message = "^(fixup|squash|amend)! ", skip = true },
+  { message = "^Initial commit$", skip = true },
+  { message = "^chore\\(deps", skip = true },
+  { message = "^feat(\\(.*\\))?!?: ", group = "<!-- 0 -->Features" },
+  { message = "^fix(\\(.*\\))?!?: ", group = "<!-- 1 -->Bug fixes" },
+  { message = "^perf(\\(.*\\))?!?: ", group = "<!-- 2 -->Performance" },
+  { message = "^refactor(\\(.*\\))?!?: ", group = "<!-- 3 -->Refactoring" },
+  { message = "^docs(\\(.*\\))?!?: ", group = "<!-- 4 -->Documentation" },
+  { message = "^revert(\\(.*\\))?!?: ", group = "<!-- 5 -->Reverts" },
+  { message = "^(test|build|ci|chore|style)(\\(.*\\))?!?: ", group = "<!-- 6 -->Other" },
+]
+filter_commits = false
+topo_order_commits = true
+sort_commits = "oldest"

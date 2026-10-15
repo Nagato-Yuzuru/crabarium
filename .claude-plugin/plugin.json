@@ -1,0 +1,8 @@
+{
+  "name": "crabarium",
+  "version": "0.1.0",
+  "description": "A pane that shows the main session and its subagents, with an animated pixel character for each agent",
+  "author": { "name": "Nagato Yuzuru" },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

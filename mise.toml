@@ -1,0 +1,13 @@
+[tools]
+node = "24.21.0"
+pnpm = "12.10.1"
+actionlint = "1.7.12"
+prek = "0.5.5"
+git-cliff = "2.14.2"
+
+[settings]
+lockfile = true
+minimum_release_age = "7d"
+
+[hooks]
+postinstall = "prek install"
