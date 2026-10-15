@@ -13,5 +13,5 @@
     // `on(...).catch(handler)` registers a hook's fallback; it is not Promise#catch.
     "promise/no-callback-in-promise": "off"
   },
-  "ignorePatterns": [".claude-plugin/types/"]
+  "ignorePatterns": [".claude-plugin/types/", "hooks/packs.generated.ts"]
 }

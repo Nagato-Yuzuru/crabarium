@@ -12,5 +12,5 @@
     ]
   },
   "sortPackageJson": false,
-  "ignorePatterns": [".claude-plugin/types/", "pnpm-lock.yaml"]
+  "ignorePatterns": [".claude-plugin/types/", "pnpm-lock.yaml", "hooks/packs.generated.ts", "schema/pack.schema.json"]
 }
