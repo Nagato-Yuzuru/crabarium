@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", "helpers:pinGitHubActionDigests"],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "lockFileMaintenance": { "enabled": true },
+  "packageRules": [
+    {
+      "description": "The engine floor in hooks/core/version.ts tracks the newest release.",
+      "matchPackageNames": ["@anthropic-ai/claude-code"],
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "description": "One PR for non-major updates of the development tools.",
+      "matchPackageNames": ["!@anthropic-ai/claude-code"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "development tools"
+    }
+  ]
+}
