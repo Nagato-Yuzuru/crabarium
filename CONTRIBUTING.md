@@ -43,6 +43,8 @@ prek runs the hooks in `prek.toml`. The hooks take the tools from `PATH`, so run
 
 CI runs the same checks, but not `typecheck`: the engine writes the types only when an interactive session loads the mod.
 
+On a pull request, the `autofix.ci` workflow runs oxfmt and `oxlint --fix`, and the autofix.ci app pushes the result to the pull request as one commit.
+
 ## Changelog
 
 `cliff.toml` configures git-cliff. `git cliff` prints the changelog from the commit history, and `git cliff -o CHANGELOG.md` writes it to a file.
