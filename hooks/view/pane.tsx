@@ -4,10 +4,11 @@ import type { On, ThemeKey } from 'claude-code'
 
 import { durationMs, initialAgents, isEnded } from '../core/agents'
 import type { AgentBoard, AgentRow, AgentStatus } from '../core/agents'
+import type { MotionMode } from '../core/character'
 import { initialSession } from '../core/session'
 import type { MainSession } from '../core/session'
 import { PANE_ID } from '../state'
-import { defaultAvatar } from './avatar'
+import { avatarKey, framePlan, framesDrawn, stopFrames } from './frames'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
@@ -70,15 +71,19 @@ export function agentGroups(board: AgentBoard): readonly AgentGroup[] {
   return groups.filter(g => g.lines.length > 0)
 }
 
-export function registerPane(on: On): void {
+export function registerPane(on: On, mode: MotionMode): void {
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     // The terminal draws the character with half blocks; other surfaces get it with the Svg renderer.
     const raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : undefined
-    const avatar = defaultAvatar()
     const rows = sessionRows(await read($, session))
-    const groups = agentGroups(await read($, agents))
+    const board = await read($, agents)
+    const groups = agentGroups(board)
     const labelWidth = Math.max(...rows.map(([label]) => label.length)) + 2
+    // The current frame, so that a redraw continues the motion and does not start it again.
+    const now = raster === undefined ? null : await $.clock.now()
+    const plan = now === null ? null : framePlan(board, now, mode)
+    if (plan !== null && now !== null) framesDrawn($, mode, plan, now)
 
     return (
       <Box flexDirection="column">
@@ -98,9 +103,9 @@ export function registerPane(on: On): void {
               <Box key={l.id} marginTop={raster === undefined ? 0 : 1} alignItems="center">
                 {/* A Raster paints all its columns even where the layout gives it fewer. So its column
                     has a fixed width and does not shrink; the text column gives way instead. */}
-                {raster !== undefined && (
-                  <Box width={avatar.columns} flexShrink={0} marginRight={1}>
-                    {h(raster, { key: `avatar-${l.id}`, ...avatar })}
+                {raster !== undefined && plan !== null && (
+                  <Box width={plan.images.get(l.id)!.columns} flexShrink={0} marginRight={1}>
+                    {h(raster, { key: avatarKey(l.id), ...plan.images.get(l.id)! })}
                   </Box>
                 )}
                 <Box flexDirection="column" flexGrow={1} flexShrink={1}>
@@ -120,4 +125,10 @@ export function registerPane(on: On): void {
       </Box>
     )
   })
+
+  // An observer: if it fails, the close goes on.
+  on('ui.close', { id: PANE_ID }, (_$, e, next) => {
+    stopFrames()
+    return next(e)
+  }).catch((_$, e, next) => next(e))
 }

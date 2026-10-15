@@ -232,4 +232,109 @@ export const packFixtures: readonly PackFixture[] = [
     schemaValid: true,
     packValid: false,
   },
+  {
+    name: 'motions with each frame operation, a part motion, and states',
+    json: edit(p => {
+      p.groups.body.variants = { flat: ['aaaa'] }
+      p.parts.hat.dot.variants = { big: ['cc'] }
+      p.parts.hat.dot.motion = {
+        fps: 2,
+        loop: true,
+        frames: [
+          { offset: [0, -1], swap: 'big' },
+          { hide: true, palette: { c: '#ffffff' } },
+        ],
+      }
+      p.motions = {
+        wave: {
+          fps: 30,
+          loop: false,
+          frames: [{ offset: { '*': [0, -1], hat: [1, 0] }, swap: { body: 'flat' }, hide: ['hat'], palette: { a: '#000000' } }, {}],
+        },
+      }
+      p.states = { working: 'wave', idle: 'bob' }
+    }),
+    schemaValid: true,
+    packValid: true,
+  },
+  {
+    name: 'a motion with 32 frames',
+    json: edit(p => {
+      p.motions = { long: { fps: 1, loop: true, frames: Array.from({ length: 32 }, () => ({})) } }
+    }),
+    schemaValid: true,
+    packValid: true,
+  },
+  {
+    name: 'a motion with 33 frames',
+    json: edit(p => {
+      p.motions = { long: { fps: 1, loop: true, frames: Array.from({ length: 33 }, () => ({})) } }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'a motion at 31 fps',
+    json: edit(p => {
+      p.motions = { fast: { fps: 31, loop: true, frames: [{}] } }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'a frame operation that is not one of the four',
+    json: edit(p => {
+      p.motions = { spin: { fps: 1, loop: true, frames: [{ rotate: 90 }] } }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: '"*" in hide',
+    json: edit(p => {
+      p.motions = { gone: { fps: 1, loop: true, frames: [{ hide: ['*'] }] } }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'a state that is not a character state',
+    json: edit(p => {
+      p.states = { dancing: 'bob' }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'an offset of a target that does not exist',
+    json: edit(p => {
+      p.motions = { m: { fps: 1, loop: true, frames: [{ offset: { tail: [0, 1] } }] } }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
+    name: 'a swap to a variant that does not exist',
+    json: edit(p => {
+      p.motions = { m: { fps: 1, loop: true, frames: [{ swap: { body: 'flat' } }] } }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
+    name: 'a state with a motion that does not exist',
+    json: edit(p => {
+      p.states = { idle: 'dance' }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
+    name: 'a slot with the name of a group',
+    json: edit(p => {
+      p.parts.body = p.parts.hat
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
 ]

@@ -7,6 +7,12 @@
 export const MAX_GRID = 32
 /** The largest number of different colors in one pack. */
 export const MAX_COLORS = 64
+/** The most frames in one motion. */
+export const MAX_FRAMES = 32
+/** The highest frame rate of a motion. */
+export const MAX_FPS = 30
+/** The character states that `states` can give a motion. */
+export const CHARACTER_STATES = ['entering', 'working', 'idle', 'finished', 'failed', 'leaving'] as const
 
 const coordinate = { type: 'integer', minimum: 0, maximum: MAX_GRID - 1 } as const
 const point = {
@@ -16,8 +22,30 @@ const point = {
   maxItems: 2,
   description: '[x, y] in pixels from the top left.',
 } as const
-const name = { type: 'string', pattern: '^[a-zA-Z][a-zA-Z0-9-]{0,31}$' } as const
+const delta = { type: 'integer', minimum: -MAX_GRID, maximum: MAX_GRID } as const
+const move = {
+  type: 'array',
+  prefixItems: [delta, delta],
+  minItems: 2,
+  maxItems: 2,
+  description: '[dx, dy] in whole pixels.',
+} as const
+const NAME = '[a-zA-Z][a-zA-Z0-9-]{0,31}'
+const name = { type: 'string', pattern: `^${NAME}$` } as const
 const color = { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'A color as #rrggbb.' } as const
+
+function motion(frame: '#/$defs/frame' | '#/$defs/partFrame') {
+  return {
+    type: 'object',
+    required: ['fps', 'loop', 'frames'],
+    additionalProperties: false,
+    properties: {
+      fps: { type: 'integer', minimum: 1, maximum: MAX_FPS },
+      loop: { type: 'boolean', description: 'true plays the frames again; false holds the last frame.' },
+      frames: { type: 'array', minItems: 1, maxItems: MAX_FRAMES, items: { $ref: frame } },
+    },
+  } as const
+}
 
 export const packSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -59,7 +87,7 @@ export const packSchema = {
         type: 'object',
         required: ['at', 'rows'],
         additionalProperties: false,
-        properties: { at: point, rows: { $ref: '#/$defs/rows' } },
+        properties: { at: point, rows: { $ref: '#/$defs/rows' }, variants: { $ref: '#/$defs/variants' } },
       },
     },
     parts: {
@@ -78,9 +106,26 @@ export const packSchema = {
             pivot: { ...point, description: 'The point of the part, from its top left, that goes on the anchor.' },
             rows: { $ref: '#/$defs/rows' },
             palette: { $ref: '#/$defs/palette' },
+            variants: { $ref: '#/$defs/variants' },
+            motion: {
+              ...motion('#/$defs/partFrame'),
+              description: 'The motion of the part itself. It names nothing outside the part, so it is the same on each body.',
+            },
           },
         },
       },
+    },
+    motions: {
+      type: 'object',
+      description: 'Motions by name. A motion with the name of a built-in motion (walk, bob, float, swing) replaces it.',
+      propertyNames: name,
+      additionalProperties: motion('#/$defs/frame'),
+    },
+    states: {
+      type: 'object',
+      description: 'The motion for each character state. A state with no motion shows the still character.',
+      additionalProperties: false,
+      properties: Object.fromEntries(CHARACTER_STATES.map(state => [state, name])),
     },
     defaults: {
       type: 'object',
@@ -109,6 +154,44 @@ export const packSchema = {
       minItems: 1,
       maxItems: MAX_GRID,
       items: { type: 'string', minLength: 1, maxLength: MAX_GRID },
+    },
+    variants: {
+      type: 'object',
+      description: 'Other rows for the same place, by name. A frame `swap` draws one of them.',
+      propertyNames: name,
+      additionalProperties: { $ref: '#/$defs/rows' },
+    },
+    frame: {
+      type: 'object',
+      description: 'One frame of a body motion. A target is a group, a part slot, or "*" for the whole character.',
+      additionalProperties: false,
+      properties: {
+        offset: {
+          type: 'object',
+          description: 'Moves targets. The offsets of "*" and of a target add together.',
+          propertyNames: { type: 'string', pattern: `^(\\*|${NAME})$` },
+          additionalProperties: move,
+        },
+        swap: {
+          type: 'object',
+          description: 'Draws a group with one of its variants.',
+          propertyNames: name,
+          additionalProperties: name,
+        },
+        hide: { type: 'array', description: 'Groups and slots that this frame does not draw.', items: name },
+        palette: { $ref: '#/$defs/palette', description: 'Colors that replace palette colors for this frame, in each palette.' },
+      },
+    },
+    partFrame: {
+      type: 'object',
+      description: 'One frame of a part motion.',
+      additionalProperties: false,
+      properties: {
+        offset: move,
+        swap: { ...name, description: 'Draws the part with one of its variants.' },
+        hide: { type: 'boolean' },
+        palette: { $ref: '#/$defs/palette', description: 'Colors that replace palette colors for this frame.' },
+      },
     },
   },
 } as const

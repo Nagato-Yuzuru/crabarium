@@ -87,8 +87,8 @@ export function registerCollect(on: On): void {
   })
 
   // An observer: if it fails, the close goes on.
-  on('ui.close', (_$, e, next) => {
-    if (e.id === PANE_ID) stopPoll()
+  on('ui.close', { id: PANE_ID }, (_$, e, next) => {
+    stopPoll()
     return next(e)
   }).catch((_$, e, next) => next(e))
 

@@ -40,6 +40,7 @@ describe('reduceAgents', () => {
           parentId: null,
           isTeammate: false,
           status: 'running',
+          statusAt: 1000,
           startedAt: 1000,
           endedAt: null,
         },
@@ -90,6 +91,11 @@ describe('reduceAgents', () => {
       expect(board.rows[0]).toEqual(expect.objectContaining({ status, endedAt: 4000 }))
     })
   }
+
+  test('each status change records its time; a list read with the same status does not', () => {
+    const board = run(spawned('a1', 0), listed(100, { a1: 'running' }), listed(200, { a1: 'waiting' }), listed(300, { a1: 'waiting' }))
+    expect(board.rows[0]!.statusAt).toBe(200)
+  })
 
   test('a turn end does not end a teammate: it only goes idle', () => {
     const before = run(spawned('t1', 0, { isTeammate: true }))

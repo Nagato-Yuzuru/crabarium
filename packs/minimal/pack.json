@@ -34,7 +34,10 @@
     },
     "eyes": {
       "at": [5, 3],
-      "rows": ["k....k"]
+      "rows": ["k....k"],
+      "variants": {
+        "shut": ["d....d"]
+      }
     },
     "legsA": {
       "at": [3, 6],
@@ -56,6 +59,54 @@
         }
       }
     }
+  },
+  "motions": {
+    "walk": {
+      "fps": 6,
+      "loop": true,
+      "frames": [
+        {
+          "offset": {
+            "legsA": [0, -1]
+          }
+        },
+        {
+          "offset": {
+            "legsB": [0, -1]
+          }
+        }
+      ]
+    },
+    "slump": {
+      "fps": 4,
+      "loop": false,
+      "frames": [
+        {
+          "offset": {
+            "clawL": [0, 1],
+            "clawR": [0, 1]
+          },
+          "swap": {
+            "eyes": "shut"
+          }
+        },
+        {
+          "offset": {
+            "clawL": [0, 2],
+            "clawR": [0, 2]
+          },
+          "swap": {
+            "eyes": "shut"
+          },
+          "palette": {
+            "o": "#b0573d"
+          }
+        }
+      ]
+    }
+  },
+  "states": {
+    "failed": "slump"
   },
   "defaults": {
     "parts": {}

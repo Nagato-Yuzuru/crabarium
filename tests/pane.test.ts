@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, MockClock } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { PANE_ID } from '../hooks/state'
@@ -30,6 +30,7 @@ async function step($: Engine, fields: { model: string; agentId?: string }): Pro
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`the pane shows the model of the last main-session step, not a subagent's (${surface})`, async ($, on) => {
+    mock.clock(on, { now: 0 })
     answerSteps(on)
 
     await step($, { model: 'claude-opus-5-5' })
@@ -80,3 +81,134 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(await pane.findAll({ type: 'Raster' })).toHaveLength(surface === 'terminal' ? 2 : 0)
   })
 }
+
+// The surface beneath the plugin: it takes each blit and records the time.
+// `deny` makes it refuse them; `latencyMs` makes it answer late.
+function blitSurface(on: On, clock: MockClock, latencyMs = 0): { times: number[]; deny: boolean } {
+  const log = { times: [] as number[], deny: false }
+  on('ui.blit', async () => {
+    if (latencyMs > 0) await clock.sleep(latencyMs)
+    log.times.push(clock.now())
+    return { value: log.deny ? { deny: 'not mounted' } : {} }
+  })
+  return log
+}
+
+// Counts the waits that the plugin asks for, and refuses the next one when told to.
+function waits(on: On): { count: number; refuseNext: boolean } {
+  const log = { count: 0, refuseNext: false }
+  // A matcher that takes every wait: the kit allows one unmatched hook for an event, and mock.clock has it.
+  on('clock.after', { ms: /^/ }, (_$, e, next) => {
+    log.count += 1
+    if (!log.refuseNext) return next(e)
+    log.refuseNext = false
+    return { deny: 'refused' } as never
+  })
+  return log
+}
+
+async function openWithOneAgent($: Engine): Promise<void> {
+  await $.agent.spawn({ prompt: 'p', description: 'read the docs', subagentType: 'Explore' } as never)
+  await $.ui.mount({ plugin: 'crabarium', surface: 'terminal', component: 'Pane', requestId: PANE_ID, props: paneProps })
+}
+
+test('a working character is repainted at each frame change of its walk, and not after it stands still', async ($, on) => {
+  const after = waits(on)
+  const clock = mock.clock(on, { now: 0 })
+  answerAgents(on)
+  const blits = blitSurface(on, clock)
+
+  await openWithOneAgent($)
+  await clock.advance(1_000)
+  // The walk has 2 frames at 6 fps, from the spawn at 0.
+  expect(blits.times).toEqual([167, 334, 500, 667, 834, 1000])
+
+  await $.turn.complete({ turnId: 't1', agentId: 'a1', reason: 'answer', answer: '' } as never)
+  await clock.advance(1_000)
+  blits.times.length = 0
+  const before = after.count
+  await clock.advance(5_000)
+  expect(blits.times).toEqual([])
+  expect(after.count).toBe(before)
+})
+
+for (const motion of ['reduced', 'off'] as const) {
+  test(`motion ${motion}: a working character starts no frame loop`, { options: { motion } }, async ($, on) => {
+    const after = waits(on)
+    const clock = mock.clock(on, { now: 0 })
+    answerAgents(on)
+    const blits = blitSurface(on, clock)
+
+    await openWithOneAgent($)
+    await clock.advance(5_000)
+    expect([blits.times, after.count]).toEqual([[], 0])
+  })
+}
+
+test('the pane starts no frame loop on a surface without Rasters', async ($, on) => {
+  const after = waits(on)
+  const clock = mock.clock(on, { now: 0 })
+  answerAgents(on)
+  const blits = blitSurface(on, clock)
+
+  await $.agent.spawn({ prompt: 'p', description: 'read the docs', subagentType: 'Explore' } as never)
+  await $.ui.mount({ plugin: 'crabarium', surface: 'desktop', component: 'Pane', requestId: PANE_ID, props: paneProps })
+  await clock.advance(5_000)
+  expect([blits.times, after.count]).toEqual([[], 0])
+})
+
+test('a close while a blit is still on its way stops the loop', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  answerAgents(on)
+  let open = true
+  on(
+    'ui.panes',
+    async () => ({ value: open ? [{ id: PANE_ID, title: 'crabarium', isShown: true, isFocused: false, isPlaced: true }] : [] }) as never,
+  )
+  on('ui.close', async () => {
+    open = false
+    return { value: undefined } as never
+  })
+  const blits = blitSurface(on, clock, 20)
+
+  await openWithOneAgent($)
+  // The tick at 167 ms waits for its blit until 187 ms; the close comes first.
+  await clock.advance(170)
+  await $.command.run({ command: 'crabarium', args: '' } as never)
+  blits.times.length = 0
+  await clock.advance(5_000)
+  expect(blits.times).toEqual([187])
+})
+
+test('a denied blit stops the loop, and the next render starts it again', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  answerAgents(on)
+  const blits = blitSurface(on, clock)
+
+  await openWithOneAgent($)
+  blits.deny = true
+  await clock.advance(1_000)
+  expect(blits.times).toEqual([167])
+
+  blits.deny = false
+  await $.agent.spawn({ prompt: 'p', description: 'write the tests', subagentType: 'Explore' } as never)
+  blits.times.length = 0
+  await clock.advance(500)
+  expect(blits.times.length).toBeGreaterThan(0)
+})
+
+test('a refused wait stops the loop, and the next render starts it again', async ($, on) => {
+  const after = waits(on)
+  const clock = mock.clock(on, { now: 0 })
+  answerAgents(on)
+  const blits = blitSurface(on, clock)
+
+  after.refuseNext = true
+  await openWithOneAgent($)
+  await clock.advance(1_000)
+  expect(blits.times).toEqual([])
+
+  await $.agent.spawn({ prompt: 'p', description: 'write the tests', subagentType: 'Explore' } as never)
+  await clock.advance(500)
+  expect(blits.times.length).toBeGreaterThan(0)
+})
