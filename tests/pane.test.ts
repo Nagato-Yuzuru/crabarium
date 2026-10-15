@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { PANE_ID } from '../hooks/state'
 
@@ -39,5 +39,42 @@ for (const surface of ['terminal', 'desktop'] as const) {
 
     expect(await pane.findAll({ type: 'Text', text: 'claude-opus-5-5' })).toHaveLength(1)
     expect(await pane.findAll({ type: 'Text', text: 'claude-haiku-5-5' })).toHaveLength(0)
+  })
+}
+
+// The engine beneath the plugin: it starts each spawn as the next id, refuses
+// one whose description says so, and lets each turn end.
+function answerAgents(on: On): void {
+  on('turn.complete', async () => ({ text: '' }))
+  let next = 0
+  on('agent.spawn', async (_$, e) => {
+    if (e.description === 'refused task') return { deny: 'not allowed' }
+    next += 1
+    return { model: 'claude-haiku-5-5', agentId: `a${next}` }
+  })
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`a spawned subagent shows under Running, then under Finished when its turn ends (${surface})`, async ($, on) => {
+    const clock = mock.clock(on, { now: 10_000 })
+    answerAgents(on)
+
+    await $.agent.spawn({ prompt: 'p', description: 'read the docs', subagentType: 'Explore' } as never)
+    await $.agent.spawn({ prompt: 'p', description: 'refused task', subagentType: 'Explore' } as never)
+    await clock.advance(2_000)
+    await $.agent.spawn({ prompt: 'p', description: 'write the tests', subagentType: 'general-purpose' } as never)
+    await clock.advance(3_000)
+    await $.turn.complete({ turnId: 't1', agentId: 'a1', reason: 'answer', answer: '' } as never)
+
+    const pane = await $.ui.mount({ plugin: 'crabarium', surface, component: 'Pane', requestId: PANE_ID, props: paneProps })
+
+    expect(await pane.findAll({ type: 'Text', text: 'Running (1)' })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: 'write the tests' })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: 'Finished (1)' })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: 'read the docs' })).toHaveLength(1)
+    // The finished agent ran 5 s; the live one has run 3 s at the last time read.
+    expect(await pane.findAll({ type: 'Text', text: '5s' })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: '3s' })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: 'refused task' })).toHaveLength(0)
   })
 }
