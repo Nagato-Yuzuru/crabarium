@@ -460,7 +460,7 @@ async function count(pane: Awaited<ReturnType<typeof paneAt>>, texts: readonly (
 
 // An exact match of a whole text.
 function exact(text: string): RegExp {
-  return new RegExp(`^${text.replace(/[$.()]/g, '\\$&')}$`)
+  return new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
 }
 
 for (const [columns, cards] of [
