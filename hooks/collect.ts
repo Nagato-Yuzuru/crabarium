@@ -20,11 +20,13 @@ const POLL_MS = 1000
 // then and restarts the poll for a pane that is still open.
 let poll: Timer | null = null
 
-export function usageEvent(usage: SessionUsage): SessionEvent {
+export function usageEvent(usage: SessionUsage, at: number): SessionEvent {
   return {
     kind: 'usage-read',
     contextPercent: usage.context.percent ?? null,
     costUsd: usage.cost?.usd ?? null,
+    startedAt: usage.startedAt,
+    at,
   }
 }
 
@@ -43,7 +45,7 @@ async function dispatchAgent($: EngineInterface, event: AgentEvent): Promise<voi
 // One read of everything the pane polls: the usage, the agent list, the time.
 async function refresh($: EngineInterface): Promise<void> {
   const [usage, list, at] = await Promise.all([$.session.usage(), $.agent.list(), $.clock.now()])
-  await dispatch($, usageEvent(usage))
+  await dispatch($, usageEvent(usage, at))
   await dispatchAgent($, listedEvent(list, at))
 }
 

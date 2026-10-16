@@ -2,9 +2,10 @@
 import type { AgentRow } from '../core/agents'
 import { characterPose } from '../core/character'
 import type { MotionMode } from '../core/character'
-import { compose, parsePackText } from '../core/pack/pack'
+import { compose, halve, parsePackText } from '../core/pack/pack'
 import type { Pack } from '../core/pack/pack'
 import { builtinPackTexts } from '../packs.generated'
+import type { CharacterSize } from './layout'
 import { cellsBase64, halfBlockCells } from './raster'
 
 export const DEFAULT_PACK = 'minimal'
@@ -29,17 +30,22 @@ let pack: Pack | undefined
 const images = new Map<string, RasterImage>()
 const MAX_IMAGES = 1024
 
-/** The default character of an agent at `now`. Each agent uses the default pack until avatar selection exists. */
-export function avatarFrame(row: AgentRow, now: number, mode: MotionMode): AvatarFrame {
+/**
+ * The default character of an agent at `now`, full size or half size. Each
+ * agent uses the default pack until avatar selection exists.
+ */
+export function avatarFrame(row: AgentRow, now: number, mode: MotionMode, size: CharacterSize = 'full'): AvatarFrame {
   pack ??= builtinPack(DEFAULT_PACK)
   const selection = pack.defaults?.parts ?? {}
   const { key, pose, nextAt } = characterPose(pack, selection, row, now, mode)
-  let image = images.get(key)
+  const cacheKey = `${size}:${key}`
+  let image = images.get(cacheKey)
   if (image === undefined) {
     if (images.size >= MAX_IMAGES) images.clear()
-    const { columns, rows, words } = halfBlockCells(compose(pack, selection, pose))
+    const grid = compose(pack, selection, pose)
+    const { columns, rows, words } = halfBlockCells(size === 'full' ? grid : halve(grid))
     image = { columns, rows, cells: cellsBase64(words) }
-    images.set(key, image)
+    images.set(cacheKey, image)
   }
   return { image, nextAt }
 }

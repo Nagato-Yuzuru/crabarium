@@ -6,6 +6,13 @@ export type MainSession = {
   model: string | null
   contextPercent: number | null
   costUsd: number | null
+  /** When the session that the cost counts from began, epoch milliseconds. */
+  startedAt: number | null
+  /**
+   * When the usage was last read. Each poll moves it, so the pane redraws and
+   * the time card moves even when no agent is live.
+   */
+  readAt: number | null
 }
 
 /** The engine's `AgentStatus`, copied because this file cannot import it. */
