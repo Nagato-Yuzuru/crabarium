@@ -6,6 +6,7 @@ import { initialAgents } from '../core/agents'
 import type { AgentStatus } from '../core/agents'
 import type { MotionMode } from '../core/character'
 import { initialSession } from '../core/session'
+import { initialUsage } from '../core/usage/usage'
 import { PANE_ID } from '../state'
 import { avatarKey, framePlan, framesDrawn, stopFrames } from './frames'
 import { paneLayout } from './layout'
@@ -13,6 +14,7 @@ import type { AgentLine, Folded, Stat } from './layout'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
+const usage = atom({ plugin: 'crabarium', key: 'usage' } as const, initialUsage)
 
 /** The mark and the theme color of each status. Pending, idle and waiting are all quiet. */
 const STATUS_MARK: Readonly<Record<AgentStatus, { mark: string; color: ThemeKey }>> = {
@@ -33,7 +35,7 @@ function cardWidth(columns: number): number {
 }
 
 function statsLine(stats: readonly Stat[]): string {
-  return stats.map(s => `${s.label} ${s.value ?? '—'}`).join(' · ')
+  return stats.map(s => `${s.label} ${s.value ?? '—'}${s.note === undefined ? '' : ` (${s.note})`}`).join(' · ')
 }
 
 /** The two elements that every surface has, which the row helpers draw with. */
@@ -73,8 +75,8 @@ export function registerPane(on: On, mode: MotionMode): void {
     // The terminal draws the characters with half blocks; other surfaces get them with the Svg renderer.
     const raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : undefined
     const columns = e.props.bodyColumns
-    const [s, board, now] = await Promise.all([read($, session), read($, agents), $.clock.now()])
-    const layout = paneLayout(board, s, now, columns, raster !== undefined)
+    const [s, board, u, now] = await Promise.all([read($, session), read($, agents), read($, usage), $.clock.now()])
+    const layout = paneLayout(board, s, u, now, columns, raster !== undefined)
     // The current frames, so that a redraw continues each motion and does not start it again.
     const plan = raster === undefined ? null : framePlan(board, layout.characters, now, mode)
     if (plan !== null) framesDrawn($, mode, layout.characters, plan, now)
@@ -117,7 +119,9 @@ export function registerPane(on: On, mode: MotionMode): void {
           <Box gap={1}>
             {header.stats.map(stat => (
               <Box key={stat.label} borderStyle="round" borderDimColor flexDirection="column" width={cardWidth(columns)} paddingX={1}>
-                <Text dimColor>{stat.label}</Text>
+                <Text dimColor wrap="truncate-end">
+                  {stat.note === undefined ? stat.label : `${stat.label} · ${stat.note}`}
+                </Text>
                 {stat.value === null ? <Text dimColor>—</Text> : <Text weight="semibold">{stat.value}</Text>}
               </Box>
             ))}

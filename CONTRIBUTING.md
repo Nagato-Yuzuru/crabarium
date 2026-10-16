@@ -57,3 +57,9 @@ Renovate updates the npm packages, the tools in `mise.toml` and `mise.lock`, and
 ## Character packs
 
 The pack format has one source: the JSON Schema object in `hooks/core/pack/schema.ts`. After you change it, or a file in `packs/`, run `pnpm gen`. `pnpm check` fails when a generated file is out of date. It also runs each fixture in `tests/fixtures/packs.ts` through Ajv, so the published schema and the mod's own validator must agree.
+
+## Context windows
+
+`hooks/core/usage/models.ts` holds the context window of each model, for a subagent's context percent. Its header names the source page and the date that it was read. Nothing updates the table automatically. When Anthropic adds a model, read the page, change the rows and the date, and run `pnpm test`. A model that is not in the table shows `?`, so an old table never shows a wrong number for a new model.
+
+The pane shows no cost for a single agent. The engine gives only the session total, and an estimate from list prices can be far off.

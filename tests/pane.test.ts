@@ -286,3 +286,117 @@ test('a subagent of a subagent folds into a count on its parent row', async ($, 
   expect(await pane.findAll({ type: 'Text', text: 'grep the branch' })).toHaveLength(0)
   expect(await pane.findAll({ type: 'Text', text: '0s · +1 nested, 1 running · Explore · haiku-5-5' })).toHaveLength(1)
 })
+
+for (const [columns, figures] of [
+  [80, true],
+  [79, false],
+] as const) {
+  test(`a subagent's step usage shows as its figures at ${columns} columns: ${figures ? 'shown' : 'left out'}`, async ($, on) => {
+    mock.clock(on, { now: 0 })
+    answerAgents(on)
+    // The model beneath answers each step with fixed usage.
+    // oxlint-disable-next-line require-yield -- turn.step hooks are generators; this one answers with its return value alone.
+    on('turn.step', async function* (_$, e) {
+      const usage = {
+        model: 'claude-haiku-5-5',
+        input_tokens: 2000,
+        output_tokens: 500,
+        cache_read_input_tokens: 40_000,
+        cache_creation_input_tokens: 0,
+      }
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage } as never
+    })
+
+    await $.agent.spawn({ prompt: 'p', description: 'read the docs', subagentType: 'Explore' } as never)
+    await step($, { model: 'claude-haiku-5-5', agentId: 'a1' })
+    const pane = await $.ui.mount({
+      plugin: 'crabarium',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: PANE_ID,
+      props: { ...paneProps, bodyColumns: columns },
+    })
+
+    // 2.5k new tokens (the 40k cache reads are left out); the prompt is 42k of a 1M window: 4%. No agent shows a cost.
+    expect(await pane.findAll({ type: 'Text', text: '2.5k tok · ctx 4%' })).toHaveLength(figures ? 1 : 0)
+    expect(await pane.findAll({ type: 'Text', text: '≈$' })).toHaveLength(0)
+    // The tokens card counts the step at every width.
+    expect(await pane.findAll({ type: 'Text', text: /^2\.5k$|tokens 2\.5k \(95% hit\)/ })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: /tokens · 95% hit|\(95% hit\)/ })).toHaveLength(1)
+  })
+}
+
+// A model beneath that answers each step with `usage`, and counts the steps it answered.
+function answerStepsWith(on: On, usage: unknown): { steps: number } {
+  const log = { steps: 0 }
+  // oxlint-disable-next-line require-yield -- turn.step hooks are generators; this one answers with its return value alone.
+  on('turn.step', async function* (_$, e) {
+    log.steps += 1
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage } as never
+  })
+  return log
+}
+
+const SOME_USAGE = {
+  model: 'claude-opus-5-5',
+  input_tokens: 1000,
+  output_tokens: 0,
+  cache_read_input_tokens: 0,
+  cache_creation_input_tokens: 0,
+}
+
+// The three card values as the pane shows them now.
+async function cardValues($: Engine): Promise<string[]> {
+  const pane = await $.ui.mount({
+    plugin: 'crabarium',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: PANE_ID,
+    props: { ...paneProps, bodyColumns: 80 },
+  })
+  const values = (await pane.findAll({ type: 'Text', text: /^(1k|2k|—)$/ })).map(t => t.text)
+  await pane.unmount()
+  return values
+}
+
+function logLines(on: On): string[] {
+  const lines: string[] = []
+  on('ui.log', async (_$, e) => {
+    lines.push(String((e as { text?: unknown }).text ?? e))
+    return { value: undefined } as never
+  })
+  return lines
+}
+
+test('a step that got no response counts nothing', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  answerStepsWith(on, null)
+  const logs = logLines(on)
+  await step($, { model: 'claude-opus-5-5' })
+  // The tokens card shows unknown (the cost and the time cards are unknown too in a test), and nothing failed.
+  expect(await cardValues($)).toEqual(['—', '—', '—'])
+  expect(logs).toEqual([])
+})
+
+test('a refused write of the usage only logs: the step still answers', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  const model = answerStepsWith(on, SOME_USAGE)
+  on('state.set', { key: 'usage' }, async () => ({ deny: 'read-only in this test' }) as never)
+  const logs = logLines(on)
+
+  await step($, { model: 'claude-opus-5-5' })
+  expect(model.steps).toBe(1)
+  expect(logs.some(l => l.includes('the usage of a step was not recorded'))).toBe(true)
+})
+
+test('a /clear starts the token sums again', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  answerStepsWith(on, SOME_USAGE)
+  on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
+  await step($, { model: 'claude-opus-5-5' })
+  await step($, { model: 'claude-opus-5-5' })
+  expect(await cardValues($)).toEqual(['—', '2k', '—'])
+
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: {} } as never)
+  expect(await cardValues($)).toEqual(['—', '—', '—'])
+})

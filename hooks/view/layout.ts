@@ -4,16 +4,18 @@
 import { durationMs, isEnded } from '../core/agents'
 import type { AgentBoard, AgentRow, AgentStatus } from '../core/agents'
 import type { MainSession } from '../core/session'
+import { cacheHitRate, contextPercent, newTokens, sessionSums } from '../core/usage/usage'
+import type { AgentUsage, UsageBoard } from '../core/usage/usage'
 
 /** The narrowest body, in columns, at which each block still shows. */
-export const STEP = { cards: 64, small: 56, character: 48 } as const
+export const STEP = { figures: 80, cards: 64, small: 56, character: 48 } as const
 /** The most finished trees that the pane shows; the others fold into "+ N earlier". */
 export const FINISHED_TREES = 5
 /** How long an ended subagent stays in its live tree before it folds. */
 export const LINGER_MS = 3000
 
-/** The blocks that show. */
-export type Steps = { cards: boolean; small: boolean; character: boolean }
+/** The blocks that show. `figures` is the usage figures on line 2 of each agent row. */
+export type Steps = { figures: boolean; cards: boolean; small: boolean; character: boolean }
 
 /**
  * The blocks for a body `columns` wide. Without Rasters (any surface but the
@@ -21,6 +23,7 @@ export type Steps = { cards: boolean; small: boolean; character: boolean }
  */
 export function stepsFor(columns: number, hasRaster: boolean): Steps {
   return {
+    figures: columns >= STEP.figures,
     cards: columns >= STEP.cards,
     small: hasRaster && columns >= STEP.small,
     character: hasRaster && columns >= STEP.character,
@@ -41,24 +44,44 @@ export function formatDuration(ms: number | null): string {
   return `${Math.floor(s / 3600)}h ${pad(Math.floor(s / 60) % 60)}m`
 }
 
+/** A token count in three significant digits: 512, 48.2k, 212k, 1.24M. */
+export function formatTokens(n: number): string {
+  if (n < 1000) return String(Math.round(n))
+  const k = Number((n / 1000).toPrecision(3))
+  // 999,500 rounds to 1000k: that is 1M.
+  return k < 1000 ? `${k}k` : `${Number((n / 1_000_000).toPrecision(3))}M`
+}
+
+/** An effort word as it is; a number is a thinking budget in tokens. */
+export function formatEffort(effort: string): string {
+  return /^\d+$/.test(effort) ? `budget ${formatTokens(Number(effort))}` : effort
+}
+
 /** The model name without the "claude-" of a first-party id. Another id (a Bedrock id, for example) stays whole. */
 export function shortModel(id: string): string {
   return id.replace(/^claude-/, '')
 }
 
-export type Stat = { label: 'cost' | 'tokens' | 'time'; value: string | null }
+/** A card: its label, a note beside the label (the cache hit rate of the tokens), and its value. */
+export type Stat = { label: 'cost' | 'tokens' | 'time'; note?: string; value: string | null }
 
 export type Header = { model: string; context: string; stats: readonly Stat[] }
 
 /** The time card counts to the last usage read, so it moves with the poll. */
-export function header(session: MainSession): Header {
+export function header(session: MainSession, usage: UsageBoard): Header {
+  const sums = sessionSums(usage)
+  const hit = sums === null ? null : cacheHitRate(sums)
   return {
     model: session.model === null ? UNKNOWN : shortModel(session.model),
     context: session.contextPercent === null ? UNKNOWN : `${Math.round(session.contextPercent)}%`,
     stats: [
       { label: 'cost', value: session.costUsd === null ? null : `$${session.costUsd.toFixed(2)}` },
-      // The usage figures come later; until then the card shows that the value is unknown.
-      { label: 'tokens', value: null },
+      // The engine gives the session cost; the tokens are the mod's own sum of every request.
+      {
+        label: 'tokens',
+        ...(hit === null ? {} : { note: `${Math.round(hit)}% hit` }),
+        value: sums === null ? null : formatTokens(newTokens(sums)),
+      },
       {
         label: 'time',
         value:
@@ -145,23 +168,47 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
-function line(row: AgentRow, now: number, extra: readonly string[], character: CharacterSize | null): AgentLine {
-  // A narrow line cuts from the end, so the duration and the counts come first.
-  const detail = [formatDuration(durationMs(row, now)), ...extra, row.type, shortModel(row.model)].join(' · ')
-  return { id: row.id, description: row.description, status: row.status, detail, character }
+// The usage figures of an agent: its tokens and its context percent, "?" when
+// the window of its model is unknown. No cost: the engine gives only the
+// session total, and an estimate from list prices can be far off (see
+// hooks/core/usage/models.ts).
+function figures(u: AgentUsage): readonly string[] {
+  const context = contextPercent(u.last)
+  return [`${formatTokens(newTokens(u.tokens))} tok`, `ctx ${context === null ? '?' : `${Math.round(context)}%`}`]
 }
 
-function liveTree(node: Node, now: number, steps: Steps): Tree {
+type Context = { now: number; steps: Steps; usage: UsageBoard }
+
+function line(row: AgentRow, c: Context, extra: readonly string[], character: CharacterSize | null): AgentLine {
+  const usage = c.usage.agents[row.id]
+  // The model, the effort and the context percent all describe the last request,
+  // which can be another model than the spawn named (a fallback, a hook).
+  const last = usage?.last
+  const model = last === undefined ? shortModel(row.model) : shortModel(last.model)
+  const label = last?.effort == null ? model : `${model} ${formatEffort(last.effort)}`
+  // A narrow line cuts from the end, so the duration and the counts come first.
+  const parts = [
+    formatDuration(durationMs(row, c.now)),
+    ...extra,
+    row.type,
+    label,
+    ...(c.steps.figures && usage !== undefined ? figures(usage) : []),
+  ]
+  return { id: row.id, description: row.description, status: row.status, detail: parts.join(' · '), character }
+}
+
+function liveTree(node: Node, c: Context): Tree {
+  const { now, steps } = c
   // An ended subagent stays for LINGER_MS, so its end does not vanish at once.
   const shows = (child: Node): boolean => isLive(child) || now - endOf(child) < LINGER_MS
   const shown = node.children.filter(shows)
-  const ended = node.children.filter(c => !shows(c))
+  const ended = node.children.filter(child => !shows(child))
   const children = shown.map(child => {
     // Agents below the subagents fold into a count, as the status line folds them.
     const deeper = child.children.flatMap(all)
     const running = deeper.filter(r => r.status === 'running').length
     const nested = deeper.length === 0 ? [] : [`+${deeper.length} nested${running > 0 ? `, ${running} running` : ''}`]
-    return line(child.row, now, nested, steps.small ? 'small' : null)
+    return line(child.row, c, nested, steps.small ? 'small' : null)
   })
   // The counts cover the folded agents at every depth, so a nested failure still shows.
   const foldedRows = ended.flatMap(all)
@@ -170,33 +217,41 @@ function liveTree(node: Node, now: number, steps: Steps): Tree {
     ended.length === 0
       ? null
       : { completed: count('completed'), failed: count('failed'), killed: count('killed'), agents: foldedRows.length }
-  return { root: line(node.row, now, [], steps.character ? 'full' : null), children, folded }
+  return { root: line(node.row, c, [], steps.character ? 'full' : null), children, folded }
 }
 
-function finishedTree(node: Node, now: number, steps: Steps): Tree {
+function finishedTree(node: Node, c: Context): Tree {
   const below = all(node).length - 1
   return {
-    root: line(node.row, now, below === 0 ? [] : [plural(below, 'subagent')], steps.character ? 'full' : null),
+    root: line(node.row, c, below === 0 ? [] : [plural(below, 'subagent')], c.steps.character ? 'full' : null),
     children: [],
     folded: null,
   }
 }
 
-export function paneLayout(board: AgentBoard, session: MainSession, now: number, columns: number, hasRaster: boolean): PaneLayout {
+export function paneLayout(
+  board: AgentBoard,
+  session: MainSession,
+  usage: UsageBoard,
+  now: number,
+  columns: number,
+  hasRaster: boolean,
+): PaneLayout {
   const steps = stepsFor(columns, hasRaster)
+  const c: Context = { now, steps, usage }
   const trees = forest(board.rows)
   const live = trees.filter(isLive)
   // Newest first: the tree whose last agent ended last.
   const ended = trees.filter(t => !isLive(t)).toSorted((a, b) => endOf(b) - endOf(a))
   const groups: Group[] = [
     // Running counts the live agents; Finished counts every agent of its trees.
-    { title: 'Running', agents: live.flatMap(all).filter(r => !isEnded(r.status)).length, trees: live.map(t => liveTree(t, now, steps)) },
-    { title: 'Finished', agents: ended.flatMap(all).length, trees: ended.slice(0, FINISHED_TREES).map(t => finishedTree(t, now, steps)) },
+    { title: 'Running', agents: live.flatMap(all).filter(r => !isEnded(r.status)).length, trees: live.map(t => liveTree(t, c)) },
+    { title: 'Finished', agents: ended.flatMap(all).length, trees: ended.slice(0, FINISHED_TREES).map(t => finishedTree(t, c)) },
   ]
   const shown = groups.flatMap(g => g.trees.flatMap(t => [t.root, ...t.children]))
   return {
     steps,
-    header: header(session),
+    header: header(session, usage),
     groups: groups.filter(g => g.trees.length > 0),
     earlier: Math.max(0, ended.length - FINISHED_TREES),
     characters: shown.flatMap(l => (l.character === null ? [] : [{ id: l.id, size: l.character }])),

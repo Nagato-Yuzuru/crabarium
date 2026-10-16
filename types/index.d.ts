@@ -41,8 +41,27 @@ export type AgentBoard = {
   rows: readonly AgentRow[]
 }
 
+/** Token counts, as the API reports them for each request, summed. */
+export type TokenSums = { input: number; output: number; cacheRead: number; cacheWrite: number }
+
+/** The last request of an agent: its prompt size (all input kinds), the model that answered, and the effort. */
+export type LastRequest = { promptTokens: number; model: string; effort: string | null }
+
+/** One agent's usage over all its requests, and its last request. */
+export type AgentUsage = { tokens: TokenSums; last: LastRequest }
+
+/**
+ * The usage of the main session and of each agent, by agent id. `main` is
+ * `null` before the main session's first request; an agent with no request
+ * has no key.
+ */
+export type UsageBoard = {
+  main: TokenSums | null
+  agents: Readonly<Record<string, AgentUsage>>
+}
+
 declare module 'claude-code' {
   interface PluginState {
-    crabarium: { session: MainSession; agents: AgentBoard }
+    crabarium: { session: MainSession; agents: AgentBoard; usage: UsageBoard }
   }
 }
