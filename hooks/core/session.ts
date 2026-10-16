@@ -5,17 +5,17 @@ export type { MainSession }
 
 export type SessionEvent =
   | { kind: 'model-used'; model: string }
-  | { kind: 'usage-read'; contextPercent: number | null; costUsd: number | null }
+  | { kind: 'usage-read'; contextPercent: number | null; costUsd: number | null; startedAt: number; at: number }
 
-export const initialSession: MainSession = { model: null, contextPercent: null, costUsd: null }
+export const initialSession: MainSession = { model: null, contextPercent: null, costUsd: null, startedAt: null, readAt: null }
 
 export function reduceSession(state: MainSession, event: SessionEvent): MainSession {
   switch (event.kind) {
     case 'model-used':
       return state.model === event.model ? state : { ...state, model: event.model }
-    case 'usage-read':
-      return state.contextPercent === event.contextPercent && state.costUsd === event.costUsd
-        ? state
-        : { ...state, contextPercent: event.contextPercent, costUsd: event.costUsd }
+    case 'usage-read': {
+      const { kind: _kind, at, ...usage } = event
+      return { ...state, ...usage, readAt: at }
+    }
   }
 }

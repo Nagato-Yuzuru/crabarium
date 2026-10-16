@@ -11,6 +11,7 @@ import type { MotionMode } from '../core/character'
 import { PANE_ID } from '../state'
 import { avatarFrame } from './avatar'
 import type { RasterImage } from './avatar'
+import type { ShownCharacter } from './layout'
 
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 
@@ -18,15 +19,18 @@ export function avatarKey(id: string): string {
   return `avatar-${id}`
 }
 
-/** The cells of each row's character at `now`, and the time of the next frame change of any of them. */
+/** The cells of each shown character at `now`, and the time of the next frame change of any of them. */
 export type FramePlan = { images: Map<string, RasterImage>; nextAt: number | null }
 
-export function framePlan(board: AgentBoard, now: number, mode: MotionMode): FramePlan {
+export function framePlan(board: AgentBoard, characters: readonly ShownCharacter[], now: number, mode: MotionMode): FramePlan {
+  const rows = new Map(board.rows.map(r => [r.id, r]))
   const images = new Map<string, RasterImage>()
   let nextAt: number | null = null
-  for (const row of board.rows) {
-    const frame = avatarFrame(row, now, mode)
-    images.set(row.id, frame.image)
+  for (const { id, size } of characters) {
+    const row = rows.get(id)
+    if (row === undefined) continue
+    const frame = avatarFrame(row, now, mode, size)
+    images.set(id, frame.image)
     if (frame.nextAt !== null) nextAt = nextAt === null ? frame.nextAt : Math.min(nextAt, frame.nextAt)
   }
   return { images, nextAt }
@@ -38,13 +42,17 @@ let timer: Timer | null = null
 // Each render and each stop starts a new generation. A tick that awaited
 // across one is stale: it changes nothing and does not wake the loop again.
 let generation = 0
-// The cells that each mounted Raster shows now, by Raster key.
+// The characters that the last render drew, and the cells that each mounted
+// Raster shows now, by Raster key. Only a render changes which characters
+// show and at which size; the loop repaints them.
+let drawn: readonly ShownCharacter[] = []
 const shown = new Map<string, string>()
 
 export function stopFrames(): void {
   generation += 1
   timer?.cancel()
   timer = null
+  drawn = []
   shown.clear()
 }
 
@@ -65,7 +73,7 @@ function wakeAt($: EngineInterface, mode: MotionMode, nextAt: number | null, now
 
 async function tick($: EngineInterface, mode: MotionMode, current: number): Promise<void> {
   const [board, now] = await Promise.all([read($, agents), $.clock.now()])
-  const { images, nextAt } = framePlan(board, now, mode)
+  const { images, nextAt } = framePlan(board, drawn, now, mode)
   const changed = [...images].filter(([id, image]) => shown.get(avatarKey(id)) !== image.cells)
   const results = await Promise.all(changed.map(([id, image]) => $.ui.blit({ requestId: PANE_ID, key: avatarKey(id), cells: image.cells })))
   if (current !== generation) return
@@ -80,8 +88,15 @@ async function tick($: EngineInterface, mode: MotionMode, current: number): Prom
 }
 
 /** Records what a render drew at `now`, and wakes the loop at the next frame change (or stops it). */
-export function framesDrawn($: EngineInterface, mode: MotionMode, plan: FramePlan, now: number): void {
+export function framesDrawn(
+  $: EngineInterface,
+  mode: MotionMode,
+  characters: readonly ShownCharacter[],
+  plan: FramePlan,
+  now: number,
+): void {
   generation += 1
+  drawn = characters
   shown.clear()
   for (const [id, image] of plan.images) shown.set(avatarKey(id), image.cells)
   wakeAt($, mode, plan.nextAt, now)

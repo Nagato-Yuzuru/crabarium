@@ -38,8 +38,9 @@ for (const surface of ['terminal', 'desktop'] as const) {
 
     const pane = await $.ui.mount({ plugin: 'crabarium', surface, component: 'Pane', requestId: PANE_ID, props: paneProps })
 
-    expect(await pane.findAll({ type: 'Text', text: 'claude-opus-5-5' })).toHaveLength(1)
-    expect(await pane.findAll({ type: 'Text', text: 'claude-haiku-5-5' })).toHaveLength(0)
+    // The header shows the short model name.
+    expect(await pane.findAll({ type: 'Text', text: 'opus-5-5 · context' })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: 'haiku-5-5' })).toHaveLength(0)
   })
 }
 
@@ -69,13 +70,16 @@ for (const surface of ['terminal', 'desktop'] as const) {
 
     const pane = await $.ui.mount({ plugin: 'crabarium', surface, component: 'Pane', requestId: PANE_ID, props: paneProps })
 
-    expect(await pane.findAll({ type: 'Text', text: 'Running (1)' })).toHaveLength(1)
+    // `text` matches by inclusion, so exact matches are anchored.
+    expect(await pane.findAll({ type: 'Text', text: /^Running$/ })).toHaveLength(1)
     expect(await pane.findAll({ type: 'Text', text: 'write the tests' })).toHaveLength(1)
-    expect(await pane.findAll({ type: 'Text', text: 'Finished (1)' })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: /^Finished$/ })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: /^ 1 $/ })).toHaveLength(2)
     expect(await pane.findAll({ type: 'Text', text: 'read the docs' })).toHaveLength(1)
-    // The finished agent ran 5 s; the live one has run 3 s at the last time read.
-    expect(await pane.findAll({ type: 'Text', text: '5s' })).toHaveLength(1)
-    expect(await pane.findAll({ type: 'Text', text: '3s' })).toHaveLength(1)
+    // The finished agent ran 5 s; the live one has run 3 s now. Without a character, line 2 is indented.
+    const indent = surface === 'terminal' ? '' : '  '
+    expect(await pane.findAll({ type: 'Text', text: `${indent}5s · Explore · haiku-5-5` })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: `${indent}3s · general-purpose · haiku-5-5` })).toHaveLength(1)
     expect(await pane.findAll({ type: 'Text', text: 'refused task' })).toHaveLength(0)
     // One character for each row on the terminal; the Svg renderer brings it to the other surfaces.
     expect(await pane.findAll({ type: 'Raster' })).toHaveLength(surface === 'terminal' ? 2 : 0)
@@ -211,4 +215,74 @@ test('a refused wait stops the loop, and the next render starts it again', async
   await $.agent.spawn({ prompt: 'p', description: 'write the tests', subagentType: 'Explore' } as never)
   await clock.advance(500)
   expect(blits.times.length).toBeGreaterThan(0)
+})
+
+test('the frame loop stops when the pane narrows below the character step', async ($, on) => {
+  const after = waits(on)
+  const clock = mock.clock(on, { now: 0 })
+  answerAgents(on)
+  const blits = blitSurface(on, clock)
+
+  await $.agent.spawn({ prompt: 'p', description: 'read the docs', subagentType: 'Explore' } as never)
+  const wide = await $.ui.mount({ plugin: 'crabarium', surface: 'terminal', component: 'Pane', requestId: PANE_ID, props: paneProps })
+  await clock.advance(500)
+  expect(blits.times.length).toBeGreaterThan(0)
+
+  // The surface draws the pane again at the new width.
+  await wide.unmount()
+  await $.ui.mount({
+    plugin: 'crabarium',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: PANE_ID,
+    props: { ...paneProps, bodyColumns: 47 },
+  })
+  blits.times.length = 0
+  const before = after.count
+  await clock.advance(5_000)
+  expect([blits.times, after.count]).toEqual([[], before])
+})
+
+// A main-loop agent with one live subagent, in a pane `columns` wide.
+async function treeAt($: Engine, on: On, columns: number) {
+  mock.clock(on, { now: 0 })
+  answerAgents(on)
+  await $.agent.spawn({ prompt: 'p', description: 'review the loop', subagentType: 'Explore' } as never)
+  await $.agent.spawn({ prompt: 'p', description: 'run the tests', subagentType: 'Explore', parentAgentId: 'a1' } as never)
+  return $.ui.mount({
+    plugin: 'crabarium',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: PANE_ID,
+    props: { ...paneProps, bodyColumns: columns },
+  })
+}
+
+// Each step starts at the exact column count in STEP; the layout tests cover the boundaries.
+for (const [columns, cards, rasters] of [
+  [80, true, 2],
+  [63, false, 2],
+  [55, false, 1],
+  [47, false, 0],
+] as const) {
+  test(`a ${columns}-column pane draws ${cards ? 'stat cards' : 'one stats line'} and ${rasters} characters`, async ($, on) => {
+    const pane = await treeAt($, on, columns)
+    expect(await pane.findAll({ type: 'Text', text: /^cost$/ })).toHaveLength(cards ? 1 : 0)
+    expect(await pane.findAll({ type: 'Text', text: 'cost — · tokens — · time —' })).toHaveLength(cards ? 0 : 1)
+    expect(await pane.findAll({ type: 'Raster' })).toHaveLength(rasters)
+    // The subagent hangs under its parent in every step.
+    expect(await pane.findAll({ type: 'Text', text: 'run the tests' })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: /^└ $/ })).toHaveLength(1)
+  })
+}
+
+test('a subagent of a subagent folds into a count on its parent row', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  answerAgents(on)
+  await $.agent.spawn({ prompt: 'p', description: 'review the loop', subagentType: 'Explore' } as never)
+  await $.agent.spawn({ prompt: 'p', description: 'run the tests', subagentType: 'Explore', parentAgentId: 'a1' } as never)
+  await $.agent.spawn({ prompt: 'p', description: 'grep the branch', subagentType: 'Explore', parentAgentId: 'a2' } as never)
+  const pane = await $.ui.mount({ plugin: 'crabarium', surface: 'terminal', component: 'Pane', requestId: PANE_ID, props: paneProps })
+  expect(await pane.findAll({ type: 'Text', text: 'grep the branch' })).toHaveLength(0)
+  expect(await pane.findAll({ type: 'Text', text: '0s · +1 nested, 1 running · Explore · haiku-5-5' })).toHaveLength(1)
 })

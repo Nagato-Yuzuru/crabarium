@@ -208,6 +208,29 @@ function paint(pixels: (number | null)[], grid: Pack['grid'], rows: Rows, palett
   })
 }
 
+/**
+ * The same picture at half size: each 2 x 2 block becomes one pixel. A block
+ * with two or more opaque pixels is opaque, in its most common color; on a tie,
+ * the first of them in reading order. One-pixel details, such as an eye, can
+ * go away.
+ */
+export function halve(grid: PixelGrid): PixelGrid {
+  const width = Math.ceil(grid.width / 2)
+  const height = Math.ceil(grid.height / 2)
+  const at = (x: number, y: number): number | null => (x < grid.width && y < grid.height ? (grid.pixels[y * grid.width + x] ?? null) : null)
+  const pixels: (number | null)[] = []
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const block = [at(2 * x, 2 * y), at(2 * x + 1, 2 * y), at(2 * x, 2 * y + 1), at(2 * x + 1, 2 * y + 1)].filter(c => c !== null)
+      const counts = new Map<number, number>()
+      for (const color of block) counts.set(color, (counts.get(color) ?? 0) + 1)
+      const top = [...counts].reduce<[number, number] | null>((best, entry) => (best === null || entry[1] > best[1] ? entry : best), null)
+      pixels.push(block.length >= 2 && top !== null ? top[0] : null)
+    }
+  }
+  return { width, height, pixels }
+}
+
 /** The frame operations to apply: one body frame, and one frame for each slot whose part moves. */
 export type Pose = { body?: Frame; parts?: Readonly<Record<string, PartFrame>> }
 

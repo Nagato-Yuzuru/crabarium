@@ -1,127 +1,164 @@
 // View: draws the pane from the state. It reads; it never writes.
 import { atom, read } from 'claude-code'
-import type { On, ThemeKey } from 'claude-code'
+import type { Elements, On, ThemeKey } from 'claude-code'
 
-import { durationMs, initialAgents, isEnded } from '../core/agents'
-import type { AgentBoard, AgentRow, AgentStatus } from '../core/agents'
+import { initialAgents } from '../core/agents'
+import type { AgentStatus } from '../core/agents'
 import type { MotionMode } from '../core/character'
 import { initialSession } from '../core/session'
-import type { MainSession } from '../core/session'
 import { PANE_ID } from '../state'
 import { avatarKey, framePlan, framesDrawn, stopFrames } from './frames'
+import { paneLayout } from './layout'
+import type { AgentLine, Folded, Stat } from './layout'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 
-const UNKNOWN = '—'
-
-export function sessionRows(s: MainSession): ReadonlyArray<readonly [label: string, value: string]> {
-  return [
-    ['model', s.model ?? UNKNOWN],
-    ['context', s.contextPercent === null ? UNKNOWN : `${Math.round(s.contextPercent)}%`],
-    ['cost', s.costUsd === null ? UNKNOWN : `$${s.costUsd.toFixed(2)}`],
-  ]
+/** The mark and the theme color of each status. Pending, idle and waiting are all quiet. */
+const STATUS_MARK: Readonly<Record<AgentStatus, { mark: string; color: ThemeKey }>> = {
+  pending: { mark: '○', color: 'inactive' },
+  running: { mark: '●', color: 'claude' },
+  waiting: { mark: '◐', color: 'inactive' },
+  idle: { mark: '○', color: 'inactive' },
+  completed: { mark: '✓', color: 'success' },
+  failed: { mark: '✗', color: 'error' },
+  killed: { mark: '⊘', color: 'warning' },
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, '0')
+const FOLDED_STATUSES = ['completed', 'failed', 'killed'] as const satisfies readonly (keyof Folded & AgentStatus)[]
+
+/** Three cards and the two one-column gaps between them fill the body. */
+function cardWidth(columns: number): number {
+  return Math.floor((columns - 2) / 3)
 }
 
-export function formatDuration(ms: number | null): string {
-  if (ms === null) return UNKNOWN
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  if (s < 3600) return `${Math.floor(s / 60)}m ${pad(s % 60)}s`
-  return `${Math.floor(s / 3600)}h ${pad(Math.floor(s / 60) % 60)}m`
+function statsLine(stats: readonly Stat[]): string {
+  return stats.map(s => `${s.label} ${s.value ?? '—'}`).join(' · ')
 }
 
-const STATUS_COLOR: Readonly<Record<AgentStatus, ThemeKey>> = {
-  pending: 'inactive',
-  running: 'claude',
-  waiting: 'warning',
-  idle: 'inactive',
-  completed: 'success',
-  failed: 'error',
-  killed: 'warning',
+/** The two elements that every surface has, which the row helpers draw with. */
+type Ui = Pick<Elements['terminal'], 'Box' | 'Text'>
+
+function status({ Text }: Ui, l: AgentLine) {
+  const { mark, color } = STATUS_MARK[l.status]
+  return <Text color={color}>{` ${mark} ${l.status}`}</Text>
 }
 
-export type AgentLine = {
-  id: string
-  description: string
-  detail: string
-  status: AgentStatus
-  duration: string
+// A tree guide two lines high: the connector, then the line that goes on down (or space).
+function guide({ Box, Text }: Ui, first: string, rest: string) {
+  return (
+    <Box flexDirection="column" width={2} flexShrink={0}>
+      <Text dimColor>{first}</Text>
+      <Text dimColor>{rest}</Text>
+    </Box>
+  )
 }
 
-export type AgentGroup = { title: 'Running' | 'Finished'; lines: readonly AgentLine[] }
-
-/** The agents split into live and ended groups, in spawn order. An empty group is left out. */
-export function agentGroups(board: AgentBoard): readonly AgentGroup[] {
-  const line = (row: AgentRow): AgentLine => ({
-    id: row.id,
-    description: row.description,
-    detail: `${row.type} · ${row.model}`,
-    status: row.status,
-    duration: formatDuration(durationMs(row, board.now)),
-  })
-  const groups: AgentGroup[] = [
-    { title: 'Running', lines: board.rows.filter(r => !isEnded(r.status)).map(line) },
-    { title: 'Finished', lines: board.rows.filter(r => isEnded(r.status)).map(line) },
-  ]
-  return groups.filter(g => g.lines.length > 0)
+function folded({ Box, Text }: Ui, f: Folded) {
+  return (
+    <Box>
+      <Text dimColor>└ </Text>
+      {FOLDED_STATUSES.filter(st => f[st] > 0).map((st, i) => (
+        <Text key={st} color={STATUS_MARK[st].color}>{`${i > 0 ? '  ' : ''}${STATUS_MARK[st].mark} ${f[st]}`}</Text>
+      ))}
+      <Text dimColor>{`  ${f.agents} ended ${f.agents === 1 ? 'subagent' : 'subagents'}`}</Text>
+    </Box>
+  )
 }
 
 export function registerPane(on: On, mode: MotionMode): void {
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
-    // The terminal draws the character with half blocks; other surfaces get it with the Svg renderer.
+    const ui = $.ui.resolve(e)
+    const { Box, Text } = ui
+    // The terminal draws the characters with half blocks; other surfaces get them with the Svg renderer.
     const raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : undefined
-    const rows = sessionRows(await read($, session))
-    const board = await read($, agents)
-    const groups = agentGroups(board)
-    const labelWidth = Math.max(...rows.map(([label]) => label.length)) + 2
-    // The current frame, so that a redraw continues the motion and does not start it again.
-    const now = raster === undefined ? null : await $.clock.now()
-    const plan = now === null ? null : framePlan(board, now, mode)
-    if (plan !== null && now !== null) framesDrawn($, mode, plan, now)
+    const columns = e.props.bodyColumns
+    const [s, board, now] = await Promise.all([read($, session), read($, agents), $.clock.now()])
+    const layout = paneLayout(board, s, now, columns, raster !== undefined)
+    // The current frames, so that a redraw continues each motion and does not start it again.
+    const plan = raster === undefined ? null : framePlan(board, layout.characters, now, mode)
+    if (plan !== null) framesDrawn($, mode, layout.characters, plan, now)
 
+    const character = (id: string) => {
+      const image = plan?.images.get(id)
+      if (raster === undefined || image === undefined) return null
+      // A Raster paints all its columns even where the layout gives it fewer. So
+      // its column has a fixed width and does not shrink; the text gives way.
+      return (
+        <Box width={image.columns} flexShrink={0} marginRight={1}>
+          {h(raster, { key: avatarKey(id), ...image })}
+        </Box>
+      )
+    }
+
+    // Line 1: the description and the status. Line 2: the detail, indented when no character shows.
+    const text = (l: AgentLine) => (
+      <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+        <Box>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text wrap="truncate-end">{l.description}</Text>
+          </Box>
+          {status(ui, l)}
+        </Box>
+        <Text dimColor wrap="truncate-end">
+          {l.character === null ? `  ${l.detail}` : l.detail}
+        </Text>
+      </Box>
+    )
+
+    const { header, steps } = layout
     return (
       <Box flexDirection="column">
-        <Text weight="semibold">Main session</Text>
-        {rows.map(([label, value]) => (
-          <Box key={label}>
-            <Box width={labelWidth}>
-              <Text dimColor>{label}</Text>
-            </Box>
-            <Text>{value}</Text>
-          </Box>
-        ))}
-        {groups.map(group => (
-          <Box key={group.title} flexDirection="column" marginTop={1}>
-            <Text weight="semibold">{`${group.title} (${group.lines.length})`}</Text>
-            {group.lines.map(l => (
-              <Box key={l.id} marginTop={raster === undefined ? 0 : 1} alignItems="center">
-                {/* A Raster paints all its columns even where the layout gives it fewer. So its column
-                    has a fixed width and does not shrink; the text column gives way instead. */}
-                {raster !== undefined && plan !== null && (
-                  <Box width={plan.images.get(l.id)!.columns} flexShrink={0} marginRight={1}>
-                    {h(raster, { key: avatarKey(l.id), ...plan.images.get(l.id)! })}
-                  </Box>
-                )}
-                <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-                  <Box>
-                    <Box flexGrow={1}>
-                      <Text wrap="truncate-end">{l.description}</Text>
-                    </Box>
-                    <Text color={STATUS_COLOR[l.status]}>{` ${l.status} `}</Text>
-                    <Text tabular>{l.duration}</Text>
-                  </Box>
-                  <Text dimColor wrap="truncate-end">{`  ${l.detail}`}</Text>
-                </Box>
+        <Box>
+          <Text weight="semibold">Main session</Text>
+          <Text dimColor wrap="truncate-end">{`  ${header.model} · context ${header.context}`}</Text>
+        </Box>
+        {steps.cards ? (
+          <Box gap={1}>
+            {header.stats.map(stat => (
+              <Box key={stat.label} borderStyle="round" borderDimColor flexDirection="column" width={cardWidth(columns)} paddingX={1}>
+                <Text dimColor>{stat.label}</Text>
+                {stat.value === null ? <Text dimColor>—</Text> : <Text weight="semibold">{stat.value}</Text>}
               </Box>
             ))}
           </Box>
-        ))}
+        ) : (
+          <Text wrap="truncate-end">{statsLine(header.stats)}</Text>
+        )}
+        {layout.groups.map(group => {
+          const count = ` ${group.agents} `
+          return (
+            <Box key={group.title} flexDirection="column" marginTop={1}>
+              <Box>
+                <Text weight="semibold">{group.title}</Text>
+                <Text dimColor>{count}</Text>
+                <Text dimColor wrap="truncate">
+                  {'─'.repeat(Math.max(0, columns - group.title.length - count.length))}
+                </Text>
+              </Box>
+              {group.trees.map((tree, i) => (
+                <Box key={tree.root.id} flexDirection="column" marginTop={i > 0 && !steps.character ? 1 : 0}>
+                  <Box alignItems="center">
+                    {character(tree.root.id)}
+                    {text(tree.root)}
+                  </Box>
+                  {tree.children.map((child, j) => {
+                    const isLast = j === tree.children.length - 1 && tree.folded === null
+                    return (
+                      <Box key={child.id}>
+                        {guide(ui, isLast ? '└ ' : '├ ', isLast ? '  ' : '│ ')}
+                        {character(child.id)}
+                        {text(child)}
+                      </Box>
+                    )
+                  })}
+                  {tree.folded !== null && folded(ui, tree.folded)}
+                </Box>
+              ))}
+            </Box>
+          )
+        })}
+        {layout.earlier > 0 && <Text dimColor>{`+ ${layout.earlier} earlier`}</Text>}
       </Box>
     )
   })

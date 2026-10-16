@@ -3,7 +3,6 @@ import { describe, expect, test } from 'claude-code/testing'
 import { listedEvent } from '../hooks/collect'
 import { durationMs, initialAgents, reduceAgents } from '../hooks/core/agents'
 import type { AgentBoard, AgentEvent } from '../hooks/core/agents'
-import { agentGroups, formatDuration } from '../hooks/view/pane'
 
 function spawned(id: string, at: number, fields: Partial<Extract<AgentEvent, { kind: 'agent-spawned' }>> = {}): AgentEvent {
   return {
@@ -139,34 +138,5 @@ describe('durationMs', () => {
   test('stops at the end time of an ended agent', () => {
     const board = run(spawned('a1', 1000), { kind: 'agent-turn-ended', id: 'a1', reason: 'answer', at: 6000 })
     expect(durationMs(board.rows[0]!, 99_000)).toBe(5000)
-  })
-})
-
-describe('formatDuration', () => {
-  test('shows seconds, then minutes and seconds, then hours and minutes', () => {
-    const cases = [
-      [null, '—'],
-      [0, '0s'],
-      [59_999, '59s'],
-      [60_000, '1m 00s'],
-      [3_599_999, '59m 59s'],
-      [3_600_000, '1h 00m'],
-      [3_660_000, '1h 01m'],
-    ] as const
-    expect(cases.map(([ms]) => formatDuration(ms))).toEqual(cases.map(([, text]) => text))
-  })
-})
-
-describe('agentGroups', () => {
-  test('leaves out empty groups', () => {
-    expect(agentGroups(initialAgents)).toEqual([])
-  })
-
-  test('puts live agents under Running and ended ones under Finished, each in spawn order', () => {
-    const board = run(spawned('a1', 0), spawned('a2', 0), spawned('a3', 0), listed(2000, { a1: 'completed', a2: 'idle', a3: 'killed' }))
-    expect(agentGroups(board).map(g => [g.title, g.lines.map(l => `${l.id} ${l.status} ${l.duration}`)])).toEqual([
-      ['Running', ['a2 idle 2s']],
-      ['Finished', ['a1 completed 2s', 'a3 killed 2s']],
-    ])
   })
 })
