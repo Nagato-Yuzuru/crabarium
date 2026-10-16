@@ -3,6 +3,8 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { AgentBoard, AgentRow } from '../hooks/core/agents'
 import { halve } from '../hooks/core/pack/pack'
 import { initialSession } from '../hooks/core/session'
+import { initialUsage, reduceUsage } from '../hooks/core/usage/usage'
+import type { UsageBoard } from '../hooks/core/usage/usage'
 import { FINISHED_TREES, formatDuration, header, LINGER_MS, paneLayout, shortModel, stepsFor } from '../hooks/view/layout'
 import type { PaneLayout } from '../hooks/view/layout'
 
@@ -26,20 +28,22 @@ function ended(id: string, status: 'completed' | 'failed' | 'killed', at: number
   return row(id, { status, statusAt: at, endedAt: at, ...fields })
 }
 
-function layout(rows: readonly AgentRow[], now = 10_000, columns = 96): PaneLayout {
+function layout(rows: readonly AgentRow[], now = 10_000, columns = 96, usage: UsageBoard = initialUsage): PaneLayout {
   const board: AgentBoard = { now, rows }
-  return paneLayout(board, initialSession, now, columns, true)
+  return paneLayout(board, initialSession, usage, now, columns, true)
 }
 
 describe('stepsFor', () => {
   // Each block shows from the exact column count in STEP and goes one column below it.
   for (const [columns, steps] of [
-    [64, { cards: true, small: true, character: true }],
-    [63, { cards: false, small: true, character: true }],
-    [56, { cards: false, small: true, character: true }],
-    [55, { cards: false, small: false, character: true }],
-    [48, { cards: false, small: false, character: true }],
-    [47, { cards: false, small: false, character: false }],
+    [80, { figures: true, cards: true, small: true, character: true }],
+    [79, { figures: false, cards: true, small: true, character: true }],
+    [64, { figures: false, cards: true, small: true, character: true }],
+    [63, { figures: false, cards: false, small: true, character: true }],
+    [56, { figures: false, cards: false, small: true, character: true }],
+    [55, { figures: false, cards: false, small: false, character: true }],
+    [48, { figures: false, cards: false, small: false, character: true }],
+    [47, { figures: false, cards: false, small: false, character: false }],
   ] as const) {
     test(`${columns} columns`, () => {
       expect(stepsFor(columns, true)).toEqual(steps)
@@ -47,13 +51,13 @@ describe('stepsFor', () => {
   }
 
   test('a surface without Rasters shows no character at any width', () => {
-    expect(stepsFor(200, false)).toEqual({ cards: true, small: false, character: false })
+    expect(stepsFor(200, false)).toEqual({ figures: true, cards: true, small: false, character: false })
   })
 })
 
 describe('header', () => {
   test('shows unknown values as a dash and the tokens as unknown until the usage figures exist', () => {
-    expect(header(initialSession)).toEqual({
+    expect(header(initialSession, initialUsage)).toEqual({
       model: '—',
       context: '—',
       stats: [
@@ -66,7 +70,7 @@ describe('header', () => {
 
   test('shows the short model, the rounded context, the cost, and the time from the session start to the last read', () => {
     const session = { model: 'claude-opus-5-5', contextPercent: 41.6, costUsd: 0.005, startedAt: 1000, readAt: 725_000 }
-    expect(header(session)).toEqual({
+    expect(header(session, initialUsage)).toEqual({
       model: 'opus-5-5',
       context: '42%',
       stats: [
@@ -226,6 +230,42 @@ describe('paneLayout characters', () => {
 
   test('below the character step no character shows, so nothing animates', () => {
     expect(layout(rows, 10_000, 47).characters).toEqual([])
+  })
+})
+
+describe('usage figures', () => {
+  const tokens = { input: 1000, output: 2000, cacheRead: 40_000, cacheWrite: 7000 }
+  const usage = reduceUsage(initialUsage, { kind: 'step-finished', agentId: 'a1', model: 'claude-sonnet-5-5', effort: 'high', tokens })
+  const rows = [row('a1', { model: 'claude-sonnet-5-5' })]
+
+  test('from 80 columns, line 2 ends with the tokens and the context percent, and no cost', () => {
+    // 10k new tokens (the 40k cache reads are left out); the prompt is 48k of a 1M window.
+    expect(layout(rows, 10_000, 80, usage).groups[0]!.trees[0]!.root.detail).toBe('10s · Explore · sonnet-5-5 high · 10k tok · ctx 5%')
+  })
+
+  test('below 80 columns the figures go, and the effort stays with the model', () => {
+    expect(layout(rows, 10_000, 79, usage).groups[0]!.trees[0]!.root.detail).toBe('10s · Explore · sonnet-5-5 high')
+  })
+
+  test('the label, the effort and the context describe the last request, even on another model than the spawn named', () => {
+    const fallback = reduceUsage(usage, { kind: 'step-finished', agentId: 'a1', model: 'claude-haiku-4-5', effort: null, tokens })
+    // 48k of Haiku 4.5's 200k window.
+    expect(layout(rows, 10_000, 96, fallback).groups[0]!.trees[0]!.root.detail).toBe('10s · Explore · haiku-4-5 · 20k tok · ctx 24%')
+  })
+
+  test('a model whose window is unknown shows "?" for the context', () => {
+    const odd = reduceUsage(initialUsage, { kind: 'step-finished', agentId: 'a1', model: 'claude-next-9', effort: null, tokens })
+    expect(layout(rows, 10_000, 96, odd).groups[0]!.trees[0]!.root.detail).toBe('10s · Explore · next-9 · 10k tok · ctx ?')
+  })
+
+  test('an agent with no request yet shows no figures', () => {
+    expect(layout(rows, 10_000, 96).groups[0]!.trees[0]!.root.detail).toBe('10s · Explore · sonnet-5-5')
+  })
+
+  test('the tokens card sums the new tokens of the main session and every agent, with the cache hit rate', () => {
+    const both = reduceUsage(usage, { kind: 'step-finished', agentId: null, model: 'claude-opus-5-5', effort: null, tokens })
+    // 2 x 10k new tokens; 80k of 96k input tokens came from the cache.
+    expect(header(initialSession, both).stats[1]).toEqual({ label: 'tokens', note: '83% hit', value: '20k' })
   })
 })
 

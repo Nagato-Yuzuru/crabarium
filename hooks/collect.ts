@@ -1,18 +1,21 @@
 // Event collection: the only layer that hooks engine events. It turns each
 // event into a domain event and applies it to the state through the core.
 
-import type { AgentInfo, EngineInterface, On, SessionUsage, Timer } from 'claude-code'
+import type { AgentInfo, EngineInterface, On, SessionUsage, Timer, TurnStepInput, TurnUsage } from 'claude-code'
 import { atom, update } from 'claude-code'
 
 import type { AgentEvent } from './core/agents'
 import { initialAgents, reduceAgents } from './core/agents'
 import type { SessionEvent } from './core/session'
 import { initialSession, reduceSession } from './core/session'
+import { initialUsage, reduceUsage } from './core/usage/usage'
+import type { StepFinished, UsageEvent } from './core/usage/usage'
 import { isSupportedEngine, MIN_ENGINE_VERSION } from './core/version'
 import { PANE_ID } from './state'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
+const usageBoard = atom({ plugin: 'crabarium', key: 'usage' } as const, initialUsage)
 
 const POLL_MS = 1000
 
@@ -30,12 +33,41 @@ export function usageEvent(usage: SessionUsage, at: number): SessionEvent {
   }
 }
 
+export function stepEvent(e: Pick<TurnStepInput, 'agentId' | 'effort'>, u: TurnUsage): StepFinished {
+  return {
+    kind: 'step-finished',
+    agentId: e.agentId ?? null,
+    model: u.model,
+    effort: e.effort === undefined ? null : String(e.effort),
+    tokens: {
+      input: u.input_tokens,
+      output: u.output_tokens,
+      cacheRead: u.cache_read_input_tokens,
+      cacheWrite: u.cache_creation_input_tokens,
+    },
+  }
+}
+
 export function listedEvent(list: readonly AgentInfo[], at: number): AgentEvent {
   return { kind: 'agents-listed', statuses: list.map(({ id, status }) => ({ id, status })), at }
 }
 
 async function dispatch($: EngineInterface, event: SessionEvent): Promise<void> {
   await update($, session, s => reduceSession(s, event))
+}
+
+async function dispatchUsage($: EngineInterface, event: UsageEvent): Promise<void> {
+  await update($, usageBoard, s => reduceUsage(s, event))
+}
+
+// Runs a write of the mod's own state from a hook on engine work. A failure,
+// in the write or in making its event, is logged and does not fail the work.
+async function observe($: EngineInterface, what: string, write: () => Promise<void>): Promise<void> {
+  await Promise.resolve()
+    .then(write)
+    .catch((error: unknown) => {
+      $.ui.log(`crabarium: ${what} of a step was not recorded: ${error instanceof Error ? error.message : String(error)}`)
+    })
 }
 
 async function dispatchAgent($: EngineInterface, event: AgentEvent): Promise<void> {
@@ -94,11 +126,26 @@ export function registerCollect(on: On): void {
     return next(e)
   }).catch((_$, e, next) => next(e))
 
+  // The model request is the engine's work, not the mod's: a failed write of
+  // the mod's own state only logs, and never fails the request.
   on('turn.step', async function* ($, e, next) {
     // A step with an agentId belongs to a subagent, not the main session.
-    if (e.agentId === undefined) await dispatch($, { kind: 'model-used', model: e.model })
-    return yield* next(e)
+    if (e.agentId === undefined) await observe($, 'the model', () => dispatch($, { kind: 'model-used', model: e.model }))
+    const result = yield* next(e)
+    // A step that got no response has no usage to count.
+    if (result.usage !== null) {
+      const usage = result.usage
+      await observe($, 'the usage', () => dispatchUsage($, stepEvent(e, usage)))
+    }
+    return result
   })
+
+  // A /clear or a resume ends the conversation without a new session.start;
+  // the token sums start again, as the engine's cost and time do.
+  on('session.end', async ($, e, next) => {
+    if (e.reason === 'clear' || e.reason === 'resume') await dispatchUsage($, { kind: 'usage-reset' })
+    return next(e)
+  }).catch((_$, e, next) => next(e))
 
   // Observers: if one fails, the spawn or the turn end goes on; `next(e)` in
   // the fallback gives back what the first `next` call settled to.
