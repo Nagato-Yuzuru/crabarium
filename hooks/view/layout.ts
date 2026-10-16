@@ -3,7 +3,8 @@
 // the Svg renderer draw the same model.
 import { durationMs, isEnded } from '../core/agents'
 import type { AgentBoard, AgentRow, AgentStatus } from '../core/agents'
-import type { MainSession } from '../core/session'
+import { cacheLeftMs, tokensPerSecond, turnCost } from '../core/session'
+import type { MainSession, RateLimit } from '../core/session'
 import { cacheHitRate, contextPercent, newTokens, sessionSums } from '../core/usage/usage'
 import type { AgentUsage, UsageBoard } from '../core/usage/usage'
 
@@ -62,32 +63,82 @@ export function shortModel(id: string): string {
   return id.replace(/^claude-/, '')
 }
 
-/** A card: its label, a note beside the label (the cache hit rate of the tokens), and its value. */
-export type Stat = { label: 'cost' | 'tokens' | 'time'; note?: string; value: string | null }
+function formatUsd(usd: number): string {
+  return `$${usd.toFixed(2)}`
+}
 
-export type Header = { model: string; context: string; stats: readonly Stat[] }
+/** A countdown as minutes and seconds: 4:05, 59:59. */
+export function formatCountdown(ms: number): string {
+  const s = Math.ceil(ms / 1000)
+  return `${Math.floor(s / 60)}:${pad(s % 60)}`
+}
 
-/** The time card counts to the last usage read, so it moves with the poll. */
-export function header(session: MainSession, usage: UsageBoard): Header {
+/** The short names of the windows that the engine names; another kind shows as it is. */
+const WINDOW_NAMES: Readonly<Record<string, string>> = { five_hour: '5h', seven_day: '7d' }
+
+/** A rate-limit window as the pane shows it: `5h` and `23%`. */
+export type Limit = { name: string; used: string }
+
+// Rounded down, so a window never shows as full before it is.
+function limit(r: RateLimit): Limit {
+  return { name: WINDOW_NAMES[r.kind] ?? r.kind.replaceAll('_', ' '), used: `${Math.floor(r.percentUsed)}%` }
+}
+
+/** A card: its label, its value, and a detail line below the value. */
+export type Stat = { label: 'cost' | 'agent tokens' | 'time'; value: string | null; detail?: string }
+
+export type Header = {
+  model: string
+  context: string
+  /** How the main session runs now: tokens per second, the cache countdown. Each shows only when it is known. */
+  live: readonly string[]
+  stats: readonly Stat[]
+  /** The rate-limit windows; empty off a subscription, and then no limits card shows. */
+  limits: readonly Limit[]
+}
+
+function detail(text: string | null): { detail?: string } {
+  return text === null ? {} : { detail: text }
+}
+
+/** The time card counts to the last usage read, so it moves with the poll. The cache countdown counts to `now`. */
+export function header(session: MainSession, usage: UsageBoard, now: number): Header {
   const sums = sessionSums(usage)
   const hit = sums === null ? null : cacheHitRate(sums)
+  const turn = turnCost(session)
+  const tps = tokensPerSecond(session.lastStep)
+  const cache = cacheLeftMs(session.cache, now)
   return {
     model: session.model === null ? UNKNOWN : shortModel(session.model),
     context: session.contextPercent === null ? UNKNOWN : `${Math.round(session.contextPercent)}%`,
+    live: [
+      ...(tps === null ? [] : [`${Math.round(tps)} tok/s`]),
+      ...(cache === null ? [] : [cache === 0 ? 'cache cold' : `cache ${formatCountdown(cache)}`]),
+    ],
     stats: [
-      { label: 'cost', value: session.costUsd === null ? null : `$${session.costUsd.toFixed(2)}` },
-      // The engine gives the session cost; the tokens are the mod's own sum of every request.
+      // The turn cost is the engine's session cost since the turn began, so it holds the subagents that ran in that time.
       {
-        label: 'tokens',
-        ...(hit === null ? {} : { note: `${Math.round(hit)}% hit` }),
+        label: 'cost',
+        value: session.costUsd === null ? null : formatUsd(session.costUsd),
+        ...detail(turn === null ? null : `turn ${formatUsd(turn)}`),
+      },
+      // The engine gives the session cost. The tokens are the mod's own sum of
+      // the agents' requests: the main session and its subagents. The engine's
+      // own requests (a session title, for example) do not reach a plugin, so
+      // the cost holds them and the tokens do not. The label says so.
+      {
+        label: 'agent tokens',
         value: sums === null ? null : formatTokens(newTokens(sums)),
+        ...detail(hit === null ? null : `${Math.round(hit)}% hit`),
       },
       {
         label: 'time',
         value:
           session.startedAt === null || session.readAt === null ? null : formatDuration(Math.max(0, session.readAt - session.startedAt)),
+        ...detail(session.turns === null ? null : plural(session.turns, 'turn')),
       },
     ],
+    limits: session.rateLimits.map(limit),
   }
 }
 
@@ -251,7 +302,7 @@ export function paneLayout(
   const shown = groups.flatMap(g => g.trees.flatMap(t => [t.root, ...t.children]))
   return {
     steps,
-    header: header(session, usage),
+    header: header(session, usage, now),
     groups: groups.filter(g => g.trees.length > 0),
     earlier: Math.max(0, ended.length - FINISHED_TREES),
     characters: shown.flatMap(l => (l.character === null ? [] : [{ id: l.id, size: l.character }])),

@@ -1,19 +1,30 @@
 // Event collection: the only layer that hooks engine events. It turns each
 // event into a domain event and applies it to the state through the core.
 
-import type { AgentInfo, EngineInterface, On, SessionUsage, Timer, TurnStepInput, TurnUsage } from 'claude-code'
+import type {
+  AgentInfo,
+  EngineInterface,
+  HookStream,
+  On,
+  SessionUsage,
+  Timer,
+  TurnStepChunk,
+  TurnStepInput,
+  TurnStepResult,
+  TurnUsage,
+} from 'claude-code'
 import { atom, update } from 'claude-code'
 
 import type { AgentEvent } from './core/agents'
 import { initialAgents, reduceAgents } from './core/agents'
 import type { SessionEvent } from './core/session'
-import { initialSession, reduceSession } from './core/session'
+import { cacheTtlMs, initialSession, reduceSession } from './core/session'
 import { initialUsage, reduceUsage } from './core/usage/usage'
 import type { StepFinished, UsageEvent } from './core/usage/usage'
 import { isSupportedEngine, MIN_ENGINE_VERSION } from './core/version'
-import { PANE_ID } from './state'
+import { PANE_ID, SESSION_SHAPE } from './state'
 
-const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)
+const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession, { shape: SESSION_SHAPE })
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 const usageBoard = atom({ plugin: 'crabarium', key: 'usage' } as const, initialUsage)
 
@@ -23,12 +34,14 @@ const POLL_MS = 1000
 // then and restarts the poll for a pane that is still open.
 let poll: Timer | null = null
 
-export function usageEvent(usage: SessionUsage, at: number): SessionEvent {
+export function usageEvent(usage: SessionUsage, turns: number | null, at: number): SessionEvent {
   return {
     kind: 'usage-read',
     contextPercent: usage.context.percent ?? null,
     costUsd: usage.cost?.usd ?? null,
     startedAt: usage.startedAt,
+    rateLimits: usage.rateLimits.map(({ kind, percentUsed }) => ({ kind, percentUsed })),
+    turns,
     at,
   }
 }
@@ -66,7 +79,7 @@ async function observe($: EngineInterface, what: string, write: () => Promise<vo
   await Promise.resolve()
     .then(write)
     .catch((error: unknown) => {
-      $.ui.log(`crabarium: ${what} of a step was not recorded: ${error instanceof Error ? error.message : String(error)}`)
+      $.ui.log(`crabarium: ${what} was not recorded: ${error instanceof Error ? error.message : String(error)}`)
     })
 }
 
@@ -74,10 +87,39 @@ async function dispatchAgent($: EngineInterface, event: AgentEvent): Promise<voi
   await update($, agents, s => reduceAgents(s, event))
 }
 
+/** The prompt origins that are the user's own: typed, through Remote Control, or from the SDK host. */
+const USER_ORIGINS: ReadonlySet<string> = new Set(['composer', 'bridge', 'sdk'])
+
+async function recordUsage($: EngineInterface, e: TurnStepInput, result: TurnStepResult): Promise<void> {
+  // A step that got no response has no usage to count.
+  if (result.usage === null) return
+  const usage = result.usage
+  await observe($, 'the usage of a step', () => dispatchUsage($, stepEvent(e, usage)))
+}
+
+// Passes a step's stream on unchanged. `done` gets the result and the time of
+// the first content chunk (`null` when none came).
+async function* timed(
+  $: EngineInterface,
+  stream: HookStream<TurnStepChunk, TurnStepResult>,
+  done: (result: TurnStepResult, firstAt: number | null) => Promise<void>,
+): AsyncGenerator<TurnStepChunk, TurnStepResult> {
+  let firstAt: number | null = null
+  for await (const chunk of stream) {
+    if (firstAt === null && chunk.kind !== 'engine') firstAt = await $.clock.now().catch(() => null)
+    yield chunk
+  }
+  const result = await stream.result
+  await done(result, firstAt)
+  return result
+}
+
 // One read of everything the pane polls: the usage, the agent list, the time.
 async function refresh($: EngineInterface): Promise<void> {
+  // The turn count is a detail: if the engine does not answer it, the rest still updates.
+  const turns = $.session.turns().catch(() => null)
   const [usage, list, at] = await Promise.all([$.session.usage(), $.agent.list(), $.clock.now()])
-  await dispatch($, usageEvent(usage, at))
+  await dispatch($, usageEvent(usage, await turns, at))
   await dispatchAgent($, listedEvent(list, at))
 }
 
@@ -130,20 +172,55 @@ export function registerCollect(on: On): void {
   // the mod's own state only logs, and never fails the request.
   on('turn.step', async function* ($, e, next) {
     // A step with an agentId belongs to a subagent, not the main session.
-    if (e.agentId === undefined) await observe($, 'the model', () => dispatch($, { kind: 'model-used', model: e.model }))
-    const result = yield* next(e)
-    // A step that got no response has no usage to count.
-    if (result.usage !== null) {
+    if (e.agentId !== undefined) return yield* timed($, next(e), result => recordUsage($, e, result))
+    await observe($, 'the model of a step', () => dispatch($, { kind: 'model-used', model: e.model }))
+    const sentAt = await $.clock.now()
+    return yield* timed($, next(e), async (result, firstAt) => {
+      await recordUsage($, e, result)
+      if (result.usage === null) return
       const usage = result.usage
-      await observe($, 'the usage', () => dispatchUsage($, stepEvent(e, usage)))
-    }
-    return result
+      await observe($, 'the timing of a step', async () => {
+        const end = await $.clock.now()
+        await dispatch($, {
+          kind: 'step-timed',
+          // The output time starts at the first chunk: the wait before it, and
+          // any retry before a chunk came, is not output.
+          step: firstAt === null ? null : { outputTokens: usage.output_tokens, ms: end - firstAt },
+          model: e.model,
+          sentAt,
+          cacheUsed: usage.cache_read_input_tokens + usage.cache_creation_input_tokens > 0,
+        })
+      })
+    })
   })
+
+  // Observers: if one fails, the prompt or the switch goes on. The turn cost
+  // counts from a prompt that the user sent, as the engine's turn count does;
+  // a notification or a schedule that wakes the loop does not start a turn.
+  on('prompt.submit', async ($, e, next) => {
+    if (USER_ORIGINS.has(e.origin.kind)) {
+      await observe($, 'the cost at a prompt', async () =>
+        dispatch($, { kind: 'prompt-sent', costUsd: (await $.session.usage()).cost?.usd ?? null }),
+      )
+    }
+    return next(e)
+  }).catch((_$, e, next) => next(e))
+
+  // The engine tells the cache TTL only here. The mod does not guess it at other times.
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    await observe($, 'the model switch', () =>
+      dispatch($, { kind: 'model-switched', model: e.to_model, cacheTtlMs: cacheTtlMs(e.cache_ttl) }),
+    )
+    return next(e)
+  }).catch((_$, e, next) => next(e))
 
   // A /clear or a resume ends the conversation without a new session.start;
   // the token sums start again, as the engine's cost and time do.
   on('session.end', async ($, e, next) => {
-    if (e.reason === 'clear' || e.reason === 'resume') await dispatchUsage($, { kind: 'usage-reset' })
+    if (e.reason === 'clear' || e.reason === 'resume') {
+      await dispatchUsage($, { kind: 'usage-reset' })
+      await dispatch($, { kind: 'conversation-replaced' })
+    }
     return next(e)
   }).catch((_$, e, next) => next(e))
 

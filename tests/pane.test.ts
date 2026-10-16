@@ -268,7 +268,7 @@ for (const [columns, cards, rasters] of [
   test(`a ${columns}-column pane draws ${cards ? 'stat cards' : 'one stats line'} and ${rasters} characters`, async ($, on) => {
     const pane = await treeAt($, on, columns)
     expect(await pane.findAll({ type: 'Text', text: /^cost$/ })).toHaveLength(cards ? 1 : 0)
-    expect(await pane.findAll({ type: 'Text', text: 'cost — · tokens — · time —' })).toHaveLength(cards ? 0 : 1)
+    expect(await pane.findAll({ type: 'Text', text: 'cost — · agent tokens — · time —' })).toHaveLength(cards ? 0 : 1)
     expect(await pane.findAll({ type: 'Raster' })).toHaveLength(rasters)
     // The subagent hangs under its parent in every step.
     expect(await pane.findAll({ type: 'Text', text: 'run the tests' })).toHaveLength(1)
@@ -321,8 +321,8 @@ for (const [columns, figures] of [
     expect(await pane.findAll({ type: 'Text', text: '2.5k tok · ctx 4%' })).toHaveLength(figures ? 1 : 0)
     expect(await pane.findAll({ type: 'Text', text: '≈$' })).toHaveLength(0)
     // The tokens card counts the step at every width.
-    expect(await pane.findAll({ type: 'Text', text: /^2\.5k$|tokens 2\.5k \(95% hit\)/ })).toHaveLength(1)
-    expect(await pane.findAll({ type: 'Text', text: /tokens · 95% hit|\(95% hit\)/ })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: /^2\.5k$|agent tokens 2\.5k/ })).toHaveLength(1)
+    expect(await pane.findAll({ type: 'Text', text: /^95% hit$|\(95% hit\)/ })).toHaveLength(1)
   })
 }
 
@@ -399,4 +399,179 @@ test('a /clear starts the token sums again', async ($, on) => {
 
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: {} } as never)
   expect(await cardValues($)).toEqual(['—', '—', '—'])
+})
+
+// The engine beneath: the session figures that the poll reads, which a test
+// changes as it goes, and a pane that opens.
+// `turns: null` makes the engine refuse the turn count.
+function sessionFigures(on: On, figures: { usd: number; rateLimits: { kind: string; percentUsed: number }[]; turns: number | null }) {
+  on(
+    'session.usage',
+    async () =>
+      ({ value: { startedAt: 0, context: { window: 1_000_000 }, rateLimits: figures.rateLimits, cost: { usd: figures.usd } } }) as never,
+  )
+  on('session.turns', async () => (figures.turns === null ? { deny: 'not now' } : { value: figures.turns }) as never)
+  on('ui.panes', async () => ({ value: [] }) as never)
+  on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
+  on('agent.list', async () => ({ value: [] }) as never)
+  on('prompt.submit', async (_$, e) => ({ text: e.text }))
+  on('classic.PostModelSwitch', async () => ({}))
+  return figures
+}
+
+// A model beneath that waits `waitMs` for its first chunk, then streams for `outputMs`.
+function slowSteps(on: On, clock: MockClock, waitMs: number, outputMs: number): void {
+  on('turn.step', async function* (_$, e) {
+    await clock.sleep(waitMs)
+    yield { kind: 'text', index: 0, text: 'x' } as never
+    await clock.sleep(outputMs)
+    const usage = { model: e.model, input_tokens: 100, output_tokens: 840, cache_read_input_tokens: 5000, cache_creation_input_tokens: 0 }
+    return { turnId: e.turnId, index: e.index, answer: 'x', toolUses: [], stopReason: 'end_turn', usage } as never
+  })
+}
+
+async function timedStep($: Engine, clock: MockClock, ms: number, fields: { agentId?: string; model?: string } = {}): Promise<void> {
+  const done = step($, { model: 'claude-opus-5-5', ...fields })
+  await clock.advance(ms)
+  await done
+}
+
+function switchModel($: Engine, cacheTtl: string, toModel = 'claude-opus-5-5') {
+  return $.classic.PostModelSwitch({ from_model: 'claude-sonnet-5-5', to_model: toModel, cache_ttl: cacheTtl } as never)
+}
+
+function submit($: Engine, kind: string) {
+  return $.prompt.submit({ text: 'go', wait: false, origin: { kind } } as never)
+}
+
+async function paneAt($: Engine, columns: number) {
+  return $.ui.mount({
+    plugin: 'crabarium',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: PANE_ID,
+    props: { ...paneProps, bodyColumns: columns },
+  })
+}
+
+async function count(pane: Awaited<ReturnType<typeof paneAt>>, texts: readonly (string | RegExp)[]): Promise<number[]> {
+  return Promise.all(texts.map(async text => (await pane.findAll({ type: 'Text', text })).length))
+}
+
+// An exact match of a whole text.
+function exact(text: string): RegExp {
+  return new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
+}
+
+for (const [columns, cards] of [
+  [64, true],
+  [63, false],
+] as const) {
+  test(`the live figures, the turn cost and the limits show at ${columns} columns, as ${cards ? 'cards' : 'text lines'}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 0 })
+    const figures = sessionFigures(on, {
+      usd: 4.09,
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 23.5 },
+        { kind: 'seven_day', percentUsed: 41 },
+      ],
+      turns: 12,
+    })
+    slowSteps(on, clock, 1000, 2000)
+
+    await switchModel($, '5m')
+    await submit($, 'composer')
+    // A notification that wakes the loop is not the user's prompt: the turn cost still counts from 4.09.
+    figures.usd = 4.15
+    await submit($, 'task-notification')
+    await timedStep($, clock, 3000)
+    figures.usd = 4.21
+    await $.command.run({ command: 'crabarium', args: '' } as never)
+    await clock.advance(60_000)
+    const pane = await paneAt($, columns)
+
+    // 840 tokens over the 2 s from the first chunk. The request was sent at 0 s with a 5 min TTL: 3:57 left at 63 s.
+    expect(await pane.findAll({ type: 'Text', text: 'opus-5-5 · context — · 420 tok/s · cache 3:57' })).toHaveLength(1)
+    if (cards) {
+      const texts = ['$4.21', 'turn $0.12', '940', '98% hit', '1m 03s', '12 turns', 'limits', '5h ', '23%', '7d ', '41%']
+      expect(await count(pane, texts.map(exact))).toEqual(texts.map(() => 1))
+    } else {
+      const lines = ['cost $4.21 · agent tokens 940 · time 1m 03s · turn $0.12 · 98% hit · 12 turns', 'limits 5h 23% · 7d 41%']
+      expect(await count(pane, lines.map(exact))).toEqual([1, 1])
+    }
+  })
+}
+
+test('without rate limits and before a model switch, there is no limits card and no countdown', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  sessionFigures(on, { usd: 1, rateLimits: [], turns: 1 })
+  slowSteps(on, clock, 0, 2000)
+
+  await timedStep($, clock, 2000)
+  await $.command.run({ command: 'crabarium', args: '' } as never)
+  // The limits, the countdown, and the tok/s that does show, at the card step and below it.
+  const texts = [/limits/, /cache/, /420 tok\/s/]
+  const cards = await paneAt($, 64)
+  expect(await count(cards, texts)).toEqual([0, 0, 1])
+  await cards.unmount()
+  expect(await count(await paneAt($, 63), texts)).toEqual([0, 0, 1])
+})
+
+test('a model switch makes the cache cold until a main request to that model; other requests do not count', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  sessionFigures(on, { usd: 1, rateLimits: [], turns: 1 })
+  slowSteps(on, clock, 0, 1000)
+  const cacheText = async () => {
+    const pane = await paneAt($, 80)
+    const found = (await pane.findAll({ type: 'Text', text: /cache/ })).map(t => String(t.text).replace(/.* · (cache .*)$/, '$1'))
+    await pane.unmount()
+    return found
+  }
+
+  await $.command.run({ command: 'crabarium', args: '' } as never)
+  await switchModel($, '1h', 'claude-sonnet-5-5')
+  // A subagent's request, and a main request to the old model, use other caches.
+  await timedStep($, clock, 1000, { agentId: 'a1', model: 'claude-sonnet-5-5' })
+  await timedStep($, clock, 1000)
+  expect(await cacheText()).toEqual(['cache cold'])
+
+  await timedStep($, clock, 1000, { model: 'claude-sonnet-5-5' })
+  expect(await cacheText()).toEqual(['cache 59:59'])
+})
+
+test('a TTL that the mod does not know shows no countdown', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  sessionFigures(on, { usd: 1, rateLimits: [], turns: 1 })
+  slowSteps(on, clock, 0, 1000)
+  await switchModel($, '30m')
+  await timedStep($, clock, 1000)
+  expect(await count(await paneAt($, 80), [/cache/])).toEqual([0])
+})
+
+test('a failed write at a prompt or a model switch only logs: the prompt and the switch go on', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  sessionFigures(on, { usd: 1, rateLimits: [], turns: 1 })
+  on('state.set', { key: 'session' }, async () => ({ deny: 'read-only in this test' }) as never)
+  const logs = logLines(on)
+
+  expect(await submit($, 'composer')).toEqual({ text: 'go' })
+  expect(await switchModel($, '5m')).toEqual({})
+  expect(['the cost at a prompt', 'the model switch'].map(what => logs.some(l => l.includes(`${what} was not recorded`)))).toEqual([
+    true,
+    true,
+  ])
+})
+
+test('when the engine does not answer the turn count, the other figures still update', async ($, on) => {
+  mock.clock(on, { now: 0 })
+  sessionFigures(on, { usd: 2.5, rateLimits: [], turns: null })
+  await $.command.run({ command: 'crabarium', args: '' } as never)
+  expect(await count(await paneAt($, 80), [exact('$2.50'), /turns?$/])).toEqual([1, 0])
+})
+
+test('after a hot reload, a value kept in the old shape reads as absent: the pane starts from the initial session', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const old = { model: 'claude-opus-5-5', contextPercent: 10, costUsd: 1, startedAt: 0, readAt: 1000 }
+  on('state.get', { key: 'session' }, async () => ({ value: { value: old, version: 3 } }) as never)
+  expect(await count(await paneAt($, 80), ['—  · context —', /^  — · context —$/])).toEqual([0, 1])
 })

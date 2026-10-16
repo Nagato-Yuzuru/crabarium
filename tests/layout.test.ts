@@ -3,6 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { AgentBoard, AgentRow } from '../hooks/core/agents'
 import { halve } from '../hooks/core/pack/pack'
 import { initialSession } from '../hooks/core/session'
+import type { PromptCache } from '../hooks/core/session'
 import { initialUsage, reduceUsage } from '../hooks/core/usage/usage'
 import type { UsageBoard } from '../hooks/core/usage/usage'
 import { FINISHED_TREES, formatDuration, header, LINGER_MS, paneLayout, shortModel, stepsFor } from '../hooks/view/layout'
@@ -55,30 +56,81 @@ describe('stepsFor', () => {
   })
 })
 
+function costCard(costUsd: number, turnBaseCost: number | null) {
+  return header({ ...initialSession, costUsd, turnBaseCost }, initialUsage, 0).stats[0]
+}
+
+function turnsDetail(turns: number | null) {
+  return header({ ...initialSession, turns }, initialUsage, 0).stats[2]?.detail
+}
+
+function liveAfter(outputTokens: number, ms: number) {
+  return header({ ...initialSession, lastStep: { outputTokens, ms } }, initialUsage, 0).live
+}
+
+function liveWith(cache: PromptCache, now: number) {
+  return header({ ...initialSession, cache }, initialUsage, now).live
+}
+
 describe('header', () => {
-  test('shows unknown values as a dash and the tokens as unknown until the usage figures exist', () => {
-    expect(header(initialSession, initialUsage)).toEqual({
+  test('shows unknown values as a dash, and no live figures, details or limits before they are known', () => {
+    expect(header(initialSession, initialUsage, 0)).toEqual({
       model: '—',
       context: '—',
+      live: [],
       stats: [
         { label: 'cost', value: null },
-        { label: 'tokens', value: null },
+        { label: 'agent tokens', value: null },
         { label: 'time', value: null },
       ],
+      limits: [],
     })
   })
 
   test('shows the short model, the rounded context, the cost, and the time from the session start to the last read', () => {
-    const session = { model: 'claude-opus-5-5', contextPercent: 41.6, costUsd: 0.005, startedAt: 1000, readAt: 725_000 }
-    expect(header(session, initialUsage)).toEqual({
-      model: 'opus-5-5',
-      context: '42%',
-      stats: [
-        { label: 'cost', value: '$0.01' },
-        { label: 'tokens', value: null },
-        { label: 'time', value: '12m 04s' },
-      ],
-    })
+    const session = { ...initialSession, model: 'claude-opus-5-5', contextPercent: 41.6, costUsd: 0.005, startedAt: 1000, readAt: 725_000 }
+    const h = header(session, initialUsage, 0)
+    expect([h.model, h.context, h.stats[0]!.value, h.stats[2]!.value]).toEqual(['opus-5-5', '42%', '$0.01', '12m 04s'])
+  })
+
+  test('the cost card shows the cost since the turn began; below the base it shows none', () => {
+    expect(costCard(4.21, 4.09)).toEqual({ label: 'cost', value: '$4.21', detail: 'turn $0.12' })
+    expect(costCard(4.21, 4.21)?.detail).toBe('turn $0.00')
+    expect(costCard(0.5, 4.21)).toEqual({ label: 'cost', value: '$0.50' })
+    expect(costCard(4.21, null)).toEqual({ label: 'cost', value: '$4.21' })
+  })
+
+  test('the time card shows the turns that the engine counts, and none before the first read', () => {
+    expect([turnsDetail(0), turnsDetail(1), turnsDetail(12), turnsDetail(null)]).toEqual(['0 turns', '1 turn', '12 turns', undefined])
+  })
+
+  test('line 1 shows the output tokens per second of the last request', () => {
+    expect([liveAfter(420, 10_000), liveAfter(0, 3000), liveAfter(5, 0)]).toEqual([['42 tok/s'], ['0 tok/s'], []])
+  })
+
+  test('the cache countdown runs from the last use to the TTL, then reads cold', () => {
+    const ttlMs = 5 * 60_000
+    const at = (now: number) => liveWith({ ttlMs, model: null, use: { kind: 'used', at: 1000 } }, now)
+    expect([at(1000), at(1000 + ttlMs - 1), at(1000 + ttlMs)]).toEqual([['cache 5:00'], ['cache 0:01'], ['cache cold']])
+    expect(liveWith({ ttlMs, model: null, use: { kind: 'cold' } }, 0)).toEqual(['cache cold'])
+  })
+
+  test('no countdown when the TTL or the cache use is not known', () => {
+    expect(liveWith({ ttlMs: null, model: null, use: { kind: 'used', at: 1000 } }, 1000)).toEqual([])
+    expect(liveWith({ ttlMs: 300_000, model: null, use: { kind: 'unknown' } }, 1000)).toEqual([])
+  })
+
+  test('the rate-limit windows show by short name, rounded down; an unknown kind shows as it is', () => {
+    const rateLimits = [
+      { kind: 'five_hour', percentUsed: 23.5 },
+      { kind: 'seven_day', percentUsed: 41 },
+      { kind: 'spend_limit', percentUsed: 104.2 },
+    ]
+    expect(header({ ...initialSession, rateLimits }, initialUsage, 0).limits).toEqual([
+      { name: '5h', used: '23%' },
+      { name: '7d', used: '41%' },
+      { name: 'spend limit', used: '104%' },
+    ])
   })
 })
 
@@ -265,7 +317,7 @@ describe('usage figures', () => {
   test('the tokens card sums the new tokens of the main session and every agent, with the cache hit rate', () => {
     const both = reduceUsage(usage, { kind: 'step-finished', agentId: null, model: 'claude-opus-5-5', effort: null, tokens })
     // 2 x 10k new tokens; 80k of 96k input tokens came from the cache.
-    expect(header(initialSession, both).stats[1]).toEqual({ label: 'tokens', note: '83% hit', value: '20k' })
+    expect(header(initialSession, both, 0).stats[1]).toEqual({ label: 'agent tokens', value: '20k', detail: '83% hit' })
   })
 })
 

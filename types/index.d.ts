@@ -13,7 +13,31 @@ export type MainSession = {
    * the time card moves even when no agent is live.
    */
   readAt: number | null
+  /** The rate-limit windows of the last read; empty off a subscription. */
+  rateLimits: readonly RateLimit[]
+  /** The prompts that the user sent in this conversation, as the engine counts them; `null` before the first read. */
+  turns: number | null
+  /** The session cost when the user sent the last prompt; `null` before it. */
+  turnBaseCost: number | null
+  /** The last main-session request that answered; `null` before it. */
+  lastStep: TimedStep | null
+  cache: PromptCache
 }
+
+/** One rate-limit window: the engine's kind (`five_hour`) and how much of it is used, 0 to 100. */
+export type RateLimit = { kind: string; percentUsed: number }
+
+/** A model request: its output tokens and how long the output took, from the first chunk to the last. */
+export type TimedStep = { outputTokens: number; ms: number }
+
+/** What the mod knows of the cache: nothing yet, cold, or used by a request sent at `at`. */
+export type CacheUse = { kind: 'unknown' } | { kind: 'cold' } | { kind: 'used'; at: number }
+
+/**
+ * The prompt cache of the main session. `ttlMs` and `model` are `null` until
+ * the engine tells them, which it does only at a model switch.
+ */
+export type PromptCache = { ttlMs: number | null; model: string | null; use: CacheUse }
 
 /** The engine's `AgentStatus`, copied because this file cannot import it. */
 export type AgentStatus = 'pending' | 'running' | 'waiting' | 'idle' | 'completed' | 'failed' | 'killed'
@@ -62,6 +86,6 @@ export type UsageBoard = {
 
 declare module 'claude-code' {
   interface PluginState {
-    crabarium: { session: MainSession; agents: AgentBoard; usage: UsageBoard }
+    crabarium: { session: Shaped<MainSession>; agents: AgentBoard; usage: UsageBoard }
   }
 }
