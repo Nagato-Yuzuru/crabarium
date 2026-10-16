@@ -7,12 +7,12 @@ import type { AgentStatus } from '../core/agents'
 import type { MotionMode } from '../core/character'
 import { initialSession } from '../core/session'
 import { initialUsage } from '../core/usage/usage'
-import { PANE_ID } from '../state'
+import { PANE_ID, SESSION_SHAPE } from '../state'
 import { avatarKey, framePlan, framesDrawn, stopFrames } from './frames'
 import { paneLayout } from './layout'
-import type { AgentLine, Folded, Stat } from './layout'
+import type { AgentLine, Folded, Limit, Stat } from './layout'
 
-const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession)
+const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession, { shape: SESSION_SHAPE })
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 const usage = atom({ plugin: 'crabarium', key: 'usage' } as const, initialUsage)
 
@@ -29,13 +29,18 @@ const STATUS_MARK: Readonly<Record<AgentStatus, { mark: string; color: ThemeKey 
 
 const FOLDED_STATUSES = ['completed', 'failed', 'killed'] as const satisfies readonly (keyof Folded & AgentStatus)[]
 
-/** Three cards and the two one-column gaps between them fill the body. */
-function cardWidth(columns: number): number {
-  return Math.floor((columns - 2) / 3)
+/** The cards and the one-column gaps between them fill the body. */
+function cardWidth(columns: number, count: number): number {
+  return Math.floor((columns - (count - 1)) / count)
 }
 
+// A narrow line cuts from the end, so the three values come first and the details after them.
 function statsLine(stats: readonly Stat[]): string {
-  return stats.map(s => `${s.label} ${s.value ?? '—'}${s.note === undefined ? '' : ` (${s.note})`}`).join(' · ')
+  return [...stats.map(s => `${s.label} ${s.value ?? '—'}`), ...stats.flatMap(s => (s.detail === undefined ? [] : [s.detail]))].join(' · ')
+}
+
+function limitsLine(limits: readonly Limit[]): string {
+  return `limits ${limits.map(l => `${l.name} ${l.used}`).join(' · ')}`
 }
 
 /** The two elements that every surface has, which the row helpers draw with. */
@@ -109,25 +114,51 @@ export function registerPane(on: On, mode: MotionMode): void {
     )
 
     const { header, steps } = layout
+    // The limits card shows only when there are limits; the cards share the width.
+    const width = cardWidth(columns, header.stats.length + (header.limits.length > 0 ? 1 : 0))
     return (
       <Box flexDirection="column">
         <Box>
           <Text weight="semibold">Main session</Text>
-          <Text dimColor wrap="truncate-end">{`  ${header.model} · context ${header.context}`}</Text>
+          <Text dimColor wrap="truncate-end">{`  ${[header.model, `context ${header.context}`, ...header.live].join(' · ')}`}</Text>
         </Box>
         {steps.cards ? (
           <Box gap={1}>
             {header.stats.map(stat => (
-              <Box key={stat.label} borderStyle="round" borderDimColor flexDirection="column" width={cardWidth(columns)} paddingX={1}>
+              <Box key={stat.label} borderStyle="round" borderDimColor flexDirection="column" width={width} paddingX={1}>
                 <Text dimColor wrap="truncate-end">
-                  {stat.note === undefined ? stat.label : `${stat.label} · ${stat.note}`}
+                  {stat.label}
                 </Text>
-                {stat.value === null ? <Text dimColor>—</Text> : <Text weight="semibold">{stat.value}</Text>}
+                {stat.value === null ? (
+                  <Text dimColor>—</Text>
+                ) : (
+                  <Text weight="semibold" wrap="truncate-end">
+                    {stat.value}
+                  </Text>
+                )}
+                <Text dimColor wrap="truncate-end">
+                  {stat.detail ?? ''}
+                </Text>
               </Box>
             ))}
+            {header.limits.length > 0 && (
+              // One line for each window, so a name never parts from its percent.
+              <Box key="limits" borderStyle="round" borderDimColor flexDirection="column" width={width} paddingX={1}>
+                <Text dimColor>limits</Text>
+                {header.limits.map(l => (
+                  <Text key={l.name} wrap="truncate-end">
+                    <Text dimColor>{`${l.name} `}</Text>
+                    <Text weight="semibold">{l.used}</Text>
+                  </Text>
+                ))}
+              </Box>
+            )}
           </Box>
         ) : (
-          <Text wrap="truncate-end">{statsLine(header.stats)}</Text>
+          <Box flexDirection="column">
+            <Text wrap="truncate-end">{statsLine(header.stats)}</Text>
+            {header.limits.length > 0 && <Text wrap="truncate-end">{limitsLine(header.limits)}</Text>}
+          </Box>
         )}
         {layout.groups.map(group => {
           const count = ` ${group.agents} `
