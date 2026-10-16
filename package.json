@@ -17,7 +17,7 @@
     "verify": "pnpm check && pnpm typecheck && pnpm validate && pnpm test"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-code": "2.1.300",
+    "@anthropic-ai/claude-code": "2.1.301",
     "@types/node": "24.19.1",
     "ajv": "8.20.0",
     "oxfmt": "0.72.0",
