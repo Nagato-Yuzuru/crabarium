@@ -16,9 +16,13 @@ export type AvatarMode = 'off' | 'keywords'
 
 const AVATAR_MODES: readonly unknown[] = ['off', 'keywords'] satisfies AvatarMode[]
 
+function isAvatarMode(option: unknown): option is AvatarMode {
+  return AVATAR_MODES.includes(option)
+}
+
 /** The `avatarMode` option. The engine gives only the manifest's values, so another value is a bug; it falls back to `keywords`. */
 export function avatarMode(option: unknown): AvatarMode {
-  return AVATAR_MODES.includes(option) ? (option as AvatarMode) : 'keywords'
+  return isAvatarMode(option) ? option : 'keywords'
 }
 
 /** What the selector reads of an agent. */
@@ -82,13 +86,14 @@ export function parseRules(text: string): { rules: readonly Rule[]; errors: read
       rules.push({ pattern, target: { kind: 'role', role: target } })
       continue
     }
-    const outfits = target.split('|').map(parseOutfit)
-    const bad = outfits.find(o => typeof o === 'string')
+    const parsed = target.split('|').map(parseOutfit)
+    const bad = parsed.find(o => typeof o === 'string')
     if (bad !== undefined) {
       errors.push({ rule, message: `${bad}, and ${JSON.stringify(target)} is not a role (${ROLES.join(', ')})` })
       continue
     }
-    rules.push({ pattern, target: { kind: 'outfits', outfits: outfits as Outfit[] } })
+    const outfits = parsed.filter((o): o is Outfit => typeof o !== 'string')
+    rules.push({ pattern, target: { kind: 'outfits', outfits } })
   }
   return { rules, errors }
 }

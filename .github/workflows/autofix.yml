@@ -31,9 +31,9 @@ jobs:
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec oxfmt .
-      # The ci workflow reports what oxlint cannot fix; this job sends the rest.
-      - run: pnpm exec oxlint --fix .
+      - run: pnpm exec vp fmt
+      # The ci workflow reports what the linter cannot fix; this job sends the rest.
+      - run: pnpm exec vp lint --fix
         continue-on-error: true
       - uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # v1.3.4
         with:

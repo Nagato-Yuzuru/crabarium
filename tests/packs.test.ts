@@ -53,11 +53,11 @@ function fakeFs(on: On, files: Record<string, FakeFile>) {
   on('fs.read', async (_$, e) => {
     log.reads.push(e.path)
     const file = files[e.path]
-    return (file === undefined ? { deny: 'ENOENT' } : file.deny !== undefined ? { deny: file.deny } : { value: file.text }) as never
+    return file === undefined ? { deny: 'ENOENT' } : file.deny !== undefined ? { deny: file.deny } : { value: file.text }
   })
   on('fs.write', async (_$, e) => {
     log.writes.push(e.path)
-    return { value: undefined } as never
+    return { value: undefined }
   })
   return log
 }
@@ -87,18 +87,17 @@ function engine(on: On) {
     log.configSets.push({ key: e.key, value: e.value })
     return { value: e.value }
   })
-  on(
-    'ui.panes',
-    async () => ({ value: open ? [{ id: PANE_ID, title: 'crabarium', isShown: true, isFocused: false, isPlaced: true }] : [] }) as never,
-  )
+  on('ui.panes', async () => ({
+    value: open ? [{ id: PANE_ID, title: 'crabarium', isShown: true, isFocused: false, isPlaced: true }] : [],
+  }))
   on('ui.open', async () => {
     open = true
     log.opened += 1
     return { value: { isPlaced: true } } as never
   })
-  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 1_000_000 }, rateLimits: [] } }) as never)
-  on('session.turns', async () => ({ value: 0 }) as never)
-  on('agent.list', async () => ({ value: [] }) as never)
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 1_000_000 }, rateLimits: [] } }))
+  on('session.turns', async () => ({ value: 0 }))
+  on('agent.list', async () => ({ value: [] }))
   return log
 }
 
@@ -114,7 +113,7 @@ async function paneTexts($: Engine): Promise<string[]> {
     requestId: PANE_ID,
     props: { title: 'crabarium', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
   })
-  const texts = (await pane.findAll({ type: 'Text' })).map(t => String(t.text))
+  const texts = (await pane.findAll({ type: 'Text' })).map(t => t.text)
   await pane.unmount()
   return texts
 }
@@ -334,7 +333,7 @@ describe('review cases', () => {
     const blits: string[] = []
     on('ui.blit', async (_$, e) => {
       blits.push((e as { key: string }).key)
-      return { value: {} } as never
+      return { value: {} }
     })
     await $.agent.spawn({ prompt: 'p', description: 'review the loop', subagentType: 'general-purpose' } as never)
     await packCommand($, 'preview minimal')
@@ -350,7 +349,7 @@ describe('review cases', () => {
     const clock = mock.clock(on, { now: 0 })
     engine(on)
     const log = fakeFs(on, { [`${DIR}/mine/pack.json`]: { text: packText('mine'), mtimeMs: 1 } })
-    on('ui.close', async () => ({ value: undefined }) as never)
+    on('ui.close', async () => ({ value: undefined }))
     // The first /crabarium opens the pane, the second closes it.
     await $.command.run({ command: 'crabarium', args: '' } as never)
     await $.command.run({ command: 'crabarium', args: '' } as never)
@@ -398,7 +397,7 @@ test('two scans differ when a file goes from a read error to its text, at the sa
 test('an empty CLAUDE_CONFIG_DIR counts as unset: the packs are in the home directory', async ($, on) => {
   mock.clock(on, { now: 0 })
   mock.env(on, { CLAUDE_CONFIG_DIR: '', HOME })
-  on('config.list', async () => ({ value: [] }) as never)
+  on('config.list', async () => ({ value: [] }))
   fakeFs(on, {})
   expect(await packCommand($, '')).toContain(`User packs: ${DIR}/<name>/pack.json`)
 })

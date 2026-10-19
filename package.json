@@ -9,19 +9,16 @@
   "scripts": {
     "dev": "claude --plugin-dir .",
     "gen": "node scripts/gen.ts",
-    "check": "oxfmt --check . && oxlint --deny-warnings . && actionlint && node scripts/gen.ts --check",
-    "fix": "oxfmt . && oxlint --fix .",
-    "typecheck": "test -d .claude-plugin/types/claude-code || { echo 'No engine types in .claude-plugin/types/. Run pnpm dev once: the engine writes them when it loads the mod.' >&2; exit 1; }; tsc -p . && tsc -p scripts",
+    "check": "vp check && actionlint && node scripts/gen.ts --check",
+    "fix": "vp check --fix",
     "validate": "claude plugin validate .",
     "test": "claude plugin test .",
-    "verify": "pnpm check && pnpm typecheck && pnpm validate && pnpm test"
+    "verify": "pnpm check && pnpm validate && pnpm test"
   },
   "devDependencies": {
     "@anthropic-ai/claude-code": "2.1.301",
     "@types/node": "24.19.1",
     "ajv": "8.20.0",
-    "oxfmt": "0.72.0",
-    "oxlint": "1.87.0",
-    "typescript": "7.0.2"
+    "vite-plus": "1.1.0"
   }
 }
