@@ -14,9 +14,13 @@ export type MotionMode = 'full' | 'reduced' | 'off'
 
 const MOTION_MODES: readonly unknown[] = ['full', 'reduced', 'off'] satisfies MotionMode[]
 
+function isMotionMode(option: unknown): option is MotionMode {
+  return MOTION_MODES.includes(option)
+}
+
 /** The `motion` option. The engine gives only the manifest's values, so another value is a bug; it falls back to `full`. */
 export function motionMode(option: unknown): MotionMode {
-  return MOTION_MODES.includes(option) ? (option as MotionMode) : 'full'
+  return isMotionMode(option) ? option : 'full'
 }
 
 const STATE_OF_STATUS = {

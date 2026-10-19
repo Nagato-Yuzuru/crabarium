@@ -6,7 +6,7 @@ import type { AgentRow, AgentStatus } from '../core/agents'
 import { pickOutfit } from '../core/avatar/select'
 import { ENTER_MS } from '../core/character'
 import { DEFAULT_STATES } from '../core/pack/motions'
-import type { CharacterState, Role } from '../core/pack/pack'
+import type { CharacterState } from '../core/pack/pack'
 import type { PackEntry } from '../core/pack/registry'
 import { ROLES } from '../core/pack/schema'
 import type { DrawnCharacter } from './frames'
@@ -85,7 +85,7 @@ export function previewModel(
     add(`preview:state:${state}`, `state ${state}`, `motion ${motion}`, status, defaults)
   }
   for (const role of ROLES) {
-    const outfits = pack.roles?.[role as Role]
+    const outfits = pack.roles?.[role]
     const parts = outfits === undefined ? null : pickOutfit(pack, outfits, `preview:${role}`)
     if (parts === null) continue
     const outfit = Object.entries(parts).map(([slot, name]) => `${slot}:${name}`)

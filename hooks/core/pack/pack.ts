@@ -186,6 +186,7 @@ function checkRelations(pack: Pack): SchemaError[] {
 export function parsePack(json: unknown): ParseResult {
   const errors = validateSchema(packSchema, json)
   if (errors.length > 0) return { ok: false, errors }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the schema check passed, and packSchema is the format of Pack.
   const pack = json as Pack
   const relations = checkRelations(pack)
   return relations.length > 0 ? { ok: false, errors: relations } : { ok: true, pack }
@@ -197,7 +198,7 @@ export function parsePackText(text: string): ParseResult {
   try {
     json = JSON.parse(text)
   } catch (error) {
-    return { ok: false, errors: [{ path: '(root)', message: `is not JSON: ${(error as Error).message}` }] }
+    return { ok: false, errors: [{ path: '(root)', message: `is not JSON: ${error instanceof Error ? error.message : String(error)}` }] }
   }
   return parsePack(json)
 }

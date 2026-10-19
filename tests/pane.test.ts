@@ -23,7 +23,7 @@ function answerSteps(on: On): void {
 
 // `$.turn.step` is a stream; the hooks run as it is read.
 async function step($: Engine, fields: { model: string; agentId?: string }): Promise<void> {
-  for await (const _chunk of $.turn.step({ turnId: 't1', index: 0, messageCount: 1, ...fields } as never)) {
+  for await (const _chunk of $.turn.step({ turnId: 't1', index: 0, messageCount: 1, ...fields })) {
     // Chunks do not matter here.
   }
 }
@@ -106,7 +106,7 @@ function waits(on: On): { count: number; refuseNext: boolean } {
     log.count += 1
     if (!log.refuseNext) return next(e)
     log.refuseNext = false
-    return { deny: 'refused' } as never
+    return { deny: 'refused' }
   })
   return log
 }
@@ -165,13 +165,12 @@ test('a close while a blit is still on its way stops the loop', async ($, on) =>
   const clock = mock.clock(on, { now: 0 })
   answerAgents(on)
   let open = true
-  on(
-    'ui.panes',
-    async () => ({ value: open ? [{ id: PANE_ID, title: 'crabarium', isShown: true, isFocused: false, isPlaced: true }] : [] }) as never,
-  )
+  on('ui.panes', async () => ({
+    value: open ? [{ id: PANE_ID, title: 'crabarium', isShown: true, isFocused: false, isPlaced: true }] : [],
+  }))
   on('ui.close', async () => {
     open = false
-    return { value: undefined } as never
+    return { value: undefined }
   })
   const blits = blitSurface(on, clock, 20)
 
@@ -362,8 +361,8 @@ async function cardValues($: Engine): Promise<string[]> {
 function logLines(on: On): string[] {
   const lines: string[] = []
   on('ui.log', async (_$, e) => {
-    lines.push(String((e as { text?: unknown }).text ?? e))
-    return { value: undefined } as never
+    lines.push(e.text)
+    return { value: undefined }
   })
   return lines
 }
@@ -381,7 +380,7 @@ test('a step that got no response counts nothing', async ($, on) => {
 test('a refused write of the usage only logs: the step still answers', async ($, on) => {
   mock.clock(on, { now: 0 })
   const model = answerStepsWith(on, SOME_USAGE)
-  on('state.set', { key: 'usage' }, async () => ({ deny: 'read-only in this test' }) as never)
+  on('state.set', { key: 'usage' }, async () => ({ deny: 'read-only in this test' }))
   const logs = logLines(on)
 
   await step($, { model: 'claude-opus-5-5' })
@@ -405,15 +404,13 @@ test('a /clear starts the token sums again', async ($, on) => {
 // changes as it goes, and a pane that opens.
 // `turns: null` makes the engine refuse the turn count.
 function sessionFigures(on: On, figures: { usd: number; rateLimits: { kind: string; percentUsed: number }[]; turns: number | null }) {
-  on(
-    'session.usage',
-    async () =>
-      ({ value: { startedAt: 0, context: { window: 1_000_000 }, rateLimits: figures.rateLimits, cost: { usd: figures.usd } } }) as never,
-  )
+  on('session.usage', async () => ({
+    value: { startedAt: 0, context: { window: 1_000_000 }, rateLimits: figures.rateLimits, cost: { usd: figures.usd } },
+  }))
   on('session.turns', async () => (figures.turns === null ? { deny: 'not now' } : { value: figures.turns }) as never)
-  on('ui.panes', async () => ({ value: [] }) as never)
+  on('ui.panes', async () => ({ value: [] }))
   on('ui.open', async () => ({ value: { isPlaced: true } }) as never)
-  on('agent.list', async () => ({ value: [] }) as never)
+  on('agent.list', async () => ({ value: [] }))
   on('prompt.submit', async (_$, e) => ({ text: e.text }))
   on('classic.PostModelSwitch', async () => ({}))
   return figures
@@ -523,7 +520,7 @@ test('a model switch makes the cache cold until a main request to that model; ot
   slowSteps(on, clock, 0, 1000)
   const cacheText = async () => {
     const pane = await paneAt($, 80)
-    const found = (await pane.findAll({ type: 'Text', text: /cache/ })).map(t => String(t.text).replace(/.* · (cache .*)$/, '$1'))
+    const found = (await pane.findAll({ type: 'Text', text: /cache/ })).map(t => t.text.replace(/.* · (cache .*)$/, '$1'))
     await pane.unmount()
     return found
   }
@@ -551,7 +548,7 @@ test('a TTL that the mod does not know shows no countdown', async ($, on) => {
 test('a failed write at a prompt or a model switch only logs: the prompt and the switch go on', async ($, on) => {
   mock.clock(on, { now: 0 })
   sessionFigures(on, { usd: 1, rateLimits: [], turns: 1 })
-  on('state.set', { key: 'session' }, async () => ({ deny: 'read-only in this test' }) as never)
+  on('state.set', { key: 'session' }, async () => ({ deny: 'read-only in this test' }))
   const logs = logLines(on)
 
   expect(await submit($, 'composer')).toEqual({ text: 'go' })
@@ -572,6 +569,6 @@ test('when the engine does not answer the turn count, the other figures still up
 test('after a hot reload, a value kept in the old shape reads as absent: the pane starts from the initial session', async ($, on) => {
   mock.clock(on, { now: 5000 })
   const old = { model: 'claude-opus-5-5', contextPercent: 10, costUsd: 1, startedAt: 0, readAt: 1000 }
-  on('state.get', { key: 'session' }, async () => ({ value: { value: old, version: 3 } }) as never)
+  on('state.get', { key: 'session' }, async () => ({ value: { value: old, version: 3 } }))
   expect(await count(await paneAt($, 80), ['—  · context —', /^  — · context —$/])).toEqual([0, 1])
 })
