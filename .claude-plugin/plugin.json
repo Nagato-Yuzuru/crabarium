@@ -14,6 +14,25 @@
       "description": "full: the characters move. reduced: each character shows one still pose for its state. off: the characters do not change.",
       "default": "full",
       "options": ["full", "reduced", "off"]
+    },
+    "pack": {
+      "type": "string",
+      "title": "Character pack",
+      "description": "The pack that draws the characters. /crabarium pack lists the packs and selects one. User packs go in <config dir>/crabarium/packs/<name>/pack.json.",
+      "default": "minimal"
+    },
+    "avatarMode": {
+      "type": "string",
+      "title": "Outfit selection",
+      "description": "keywords: each agent gets an outfit from the words of its task and its type. off: only your rules and the pack defaults.",
+      "default": "keywords",
+      "options": ["keywords", "off"]
+    },
+    "avatarRules": {
+      "type": "string",
+      "title": "Outfit rules",
+      "description": "Your rules, first match wins: pattern = target; pattern = target. A pattern is an agent type or a word of the task. A target is a role (explorer, reviewer, builder, tester, planner, researcher) or parts with weights: hat:judge*3 | hat:cap. Example: linus-reviewer = reviewer; migration = hat:cap",
+      "default": ""
     }
   }
 }

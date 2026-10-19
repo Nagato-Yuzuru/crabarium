@@ -4,17 +4,28 @@ import type { Elements, On, ThemeKey } from 'claude-code'
 
 import { initialAgents } from '../core/agents'
 import type { AgentStatus } from '../core/agents'
+import { parseRules, selectOutfit } from '../core/avatar/select'
+import { initialSettings } from '../core/avatar/settings'
 import type { MotionMode } from '../core/character'
+import { activePack, packEntries } from '../core/pack/registry'
 import { initialSession } from '../core/session'
 import { initialUsage } from '../core/usage/usage'
+import { NO_PACK_FILES } from '../packs'
+import { builtinPackTexts } from '../packs.generated'
 import { PANE_ID, SESSION_SHAPE } from '../state'
+import { fallbackPack } from './avatar'
 import { avatarKey, framePlan, framesDrawn, stopFrames } from './frames'
+import type { DrawnCharacter } from './frames'
 import { paneLayout } from './layout'
 import type { AgentLine, Folded, Limit, Stat } from './layout'
+import { previewModel } from './preview'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession, { shape: SESSION_SHAPE })
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 const usage = atom({ plugin: 'crabarium', key: 'usage' } as const, initialUsage)
+const settings = atom({ plugin: 'crabarium', key: 'settings' } as const, initialSettings)
+const packFiles = atom({ plugin: 'crabarium', key: 'packFiles' } as const, NO_PACK_FILES)
+const preview = atom({ plugin: 'crabarium', key: 'preview' } as const, null)
 
 /** The mark and the theme color of each status. Pending, idle and waiting are all quiet. */
 const STATUS_MARK: Readonly<Record<AgentStatus, { mark: string; color: ThemeKey }>> = {
@@ -80,11 +91,32 @@ export function registerPane(on: On, mode: MotionMode): void {
     // The terminal draws the characters with half blocks; other surfaces get them with the Svg renderer.
     const raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : undefined
     const columns = e.props.bodyColumns
-    const [s, board, u, now] = await Promise.all([read($, session), read($, agents), read($, usage), $.clock.now()])
+    const [s, board, u, now, config, files, shownPreview] = await Promise.all([
+      read($, session),
+      read($, agents),
+      read($, usage),
+      $.clock.now(),
+      read($, settings),
+      read($, packFiles),
+      read($, preview),
+    ])
     const layout = paneLayout(board, s, u, now, columns, raster !== undefined)
+    const entries = packEntries(builtinPackTexts, files)
+    const active = activePack(entries, config.pack, fallbackPack())
+    const choice = { mode: config.avatarMode, rules: parseRules(config.avatarRules).rules }
+    const rows = new Map(board.rows.map(r => [r.id, r]))
+    const agentCharacters = layout.characters.flatMap(({ id, size }): DrawnCharacter[] => {
+      const row = rows.get(id)
+      if (row === undefined) return []
+      const { parts } = selectOutfit(active.pack, { id, type: row.type, description: row.description }, choice)
+      return [{ id, size, row, pack: active.pack, parts }]
+    })
+    const shown = previewModel(entries, shownPreview, now, layout.steps.character ? 'full' : null)
+    // A preview hides the agents, so their Rasters are not mounted: a blit to one would stop the loop.
+    const characters = shown === null ? agentCharacters : shown.characters
     // The current frames, so that a redraw continues each motion and does not start it again.
-    const plan = raster === undefined ? null : framePlan(board, layout.characters, now, mode)
-    if (plan !== null) framesDrawn($, mode, layout.characters, plan, now)
+    const plan = raster === undefined ? null : framePlan(characters, now, mode)
+    if (plan !== null) framesDrawn($, mode, characters, plan, now)
 
     const character = (id: string) => {
       const image = plan?.images.get(id)
@@ -109,6 +141,17 @@ export function registerPane(on: On, mode: MotionMode): void {
         </Box>
         <Text dimColor wrap="truncate-end">
           {l.character === null ? `  ${l.detail}` : l.detail}
+        </Text>
+      </Box>
+    )
+
+    // A group heading: the title, a count, and a rule to the edge.
+    const heading = (title: string, count: string) => (
+      <Box>
+        <Text weight="semibold">{title}</Text>
+        <Text dimColor>{count}</Text>
+        <Text dimColor wrap="truncate">
+          {'─'.repeat(Math.max(0, columns - title.length - count.length))}
         </Text>
       </Box>
     )
@@ -160,17 +203,32 @@ export function registerPane(on: On, mode: MotionMode): void {
             {header.limits.length > 0 && <Text wrap="truncate-end">{limitsLine(header.limits)}</Text>}
           </Box>
         )}
-        {layout.groups.map(group => {
-          const count = ` ${group.agents} `
+        {active.problem !== null && (
+          <Text color="warning" wrap="truncate-end">
+            {`${active.problem}; the pane shows ${active.name}`}
+          </Text>
+        )}
+        {shown !== null ? (
+          // A preview takes the place of the agents until it ends.
+          <Box flexDirection="column" marginTop={1}>
+            {heading(shown.title, ' ')}
+            {shown.problem !== null && (
+              <Text color="warning" wrap="truncate-end">
+                {shown.problem}
+              </Text>
+            )}
+            {shown.lines.map(l => (
+              <Box key={l.id} alignItems="center">
+                {character(l.id)}
+                {text(l)}
+              </Box>
+            ))}
+          </Box>
+        ) : null}
+        {(shown === null ? layout.groups : []).map(group => {
           return (
             <Box key={group.title} flexDirection="column" marginTop={1}>
-              <Box>
-                <Text weight="semibold">{group.title}</Text>
-                <Text dimColor>{count}</Text>
-                <Text dimColor wrap="truncate">
-                  {'─'.repeat(Math.max(0, columns - group.title.length - count.length))}
-                </Text>
-              </Box>
+              {heading(group.title, ` ${group.agents} `)}
               {group.trees.map((tree, i) => (
                 <Box key={tree.root.id} flexDirection="column" marginTop={i > 0 && !steps.character ? 1 : 0}>
                   <Box alignItems="center">
@@ -193,7 +251,7 @@ export function registerPane(on: On, mode: MotionMode): void {
             </Box>
           )
         })}
-        {layout.earlier > 0 && <Text dimColor>{`+ ${layout.earlier} earlier`}</Text>}
+        {shown === null && layout.earlier > 0 && <Text dimColor>{`+ ${layout.earlier} earlier`}</Text>}
       </Box>
     )
   })

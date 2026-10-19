@@ -58,6 +58,8 @@ Renovate updates the npm packages, the tools in `mise.toml` and `mise.lock`, and
 
 The pack format has one source: the JSON Schema object in `hooks/core/pack/schema.ts`. After you change it, or a file in `packs/`, run `pnpm gen`. `pnpm check` fails when a generated file is out of date. It also runs each fixture in `tests/fixtures/packs.ts` through Ajv, so the published schema and the mod's own validator must agree.
 
+The roles (`ROLES` in `hooks/core/pack/schema.ts`) are a closed set. A pack maps the roles that it has art for, the keyword and type tables in `hooks/core/avatar/select.ts` give a role, and a classifier will choose one of them. To add or remove a role is a pack format change: update the schema, the tables, and the built-in packs together.
+
 ## Context windows
 
 `hooks/core/usage/models.ts` holds the context window of each model, for a subagent's context percent. Its header names the source page and the date that it was read. Nothing updates the table automatically. When Anthropic adds a model, read the page, change the rows and the date, and run `pnpm test`. A model that is not in the table shows `?`, so an old table never shows a wrong number for a new model.

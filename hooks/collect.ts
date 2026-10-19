@@ -15,8 +15,11 @@ import type {
 } from 'claude-code'
 import { atom, update } from 'claude-code'
 
+import { refreshPacks, runPackCommand, settingChanged } from './commands'
 import type { AgentEvent } from './core/agents'
 import { initialAgents, reduceAgents } from './core/agents'
+import type { AvatarSettings } from './core/avatar/settings'
+import { initialSettings } from './core/avatar/settings'
 import type { SessionEvent } from './core/session'
 import { cacheTtlMs, initialSession, reduceSession } from './core/session'
 import { initialUsage, reduceUsage } from './core/usage/usage'
@@ -27,6 +30,7 @@ import { PANE_ID, SESSION_SHAPE } from './state'
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession, { shape: SESSION_SHAPE })
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 const usageBoard = atom({ plugin: 'crabarium', key: 'usage' } as const, initialUsage)
+const settings = atom({ plugin: 'crabarium', key: 'settings' } as const, initialSettings)
 
 const POLL_MS = 1000
 
@@ -123,27 +127,50 @@ async function refresh($: EngineInterface): Promise<void> {
   await dispatchAgent($, listedEvent(list, at))
 }
 
+// The API has no file watch, so the mod checks the user packs' file times
+// while the pane is open. A failed check waits for the next one.
+const PACK_POLL_MS = 3000
+let packPoll: Timer | null = null
+
 function startPoll($: EngineInterface): void {
   poll ??= $.clock.every(POLL_MS, () => void refresh($))
+  packPoll ??= $.clock.every(PACK_POLL_MS, () => void refreshPacks($).catch(() => undefined))
 }
 
 function stopPoll(): void {
   poll?.cancel()
   poll = null
+  packPoll?.cancel()
+  packPoll = null
 }
 
 async function isPaneOpen($: EngineInterface): Promise<boolean> {
   return (await $.ui.panes()).some(pane => pane.id === PANE_ID)
 }
 
-export function registerCollect(on: On): void {
+async function openPane($: EngineInterface): Promise<string> {
+  await refresh($)
+  const opened = await $.ui.open({ id: PANE_ID, title: 'crabarium' })
+  startPoll($)
+  return opened.isPlaced ? 'crabarium pane opened.' : `crabarium pane waits: ${opened.reason}`
+}
+
+/** `options` are the plugin's `userConfig` values as the module loaded with them. */
+export function registerCollect(on: On, options: AvatarSettings): void {
   on('session.start', async ($, e, next) => {
     const { version } = await $.session.version()
     if (!isSupportedEngine(version)) {
       $.ui.log(`crabarium needs Claude Code ${MIN_ENGINE_VERSION} or later (this is ${version}); it stays off.`)
       return next(e)
     }
-    await $.command.register({ name: 'crabarium', description: 'Show or hide the crabarium pane' })
+    // The engine loads the module again with new options, so they are current here.
+    await update($, settings, () => options)
+    await $.command.register({
+      name: 'crabarium',
+      description: 'Show or hide the crabarium pane; `pack` lists, selects, checks and previews character packs',
+      argumentHint: '[pack [<name> | reload | check [<name>] | preview [<name>]]]',
+    })
+    await refreshPacks($).catch(() => undefined)
     if (await isPaneOpen($)) {
       await refresh($)
       startPoll($)
@@ -151,16 +178,30 @@ export function registerCollect(on: On): void {
     return next(e)
   })
 
-  on('command.run', { command: 'crabarium' }, async $ => {
+  on('command.run', { command: 'crabarium' }, async ($, e) => {
+    const [word, ...rest] = e.args
+      .trim()
+      .split(/\s+/)
+      .filter(w => w !== '')
+    if (word === 'pack')
+      return { text: await runPackCommand($, rest, { openPane: async () => void ((await isPaneOpen($)) || (await openPane($))) }) }
+    if (word !== undefined) return { text: `Unknown argument ${JSON.stringify(word)}. Usage: /crabarium [pack ...]` }
     if (await isPaneOpen($)) {
       await $.ui.close({ id: PANE_ID })
       return { text: 'crabarium pane closed.' }
     }
-    await refresh($)
-    const opened = await $.ui.open({ id: PANE_ID, title: 'crabarium' })
-    startPoll($)
-    return { text: opened.isPlaced ? 'crabarium pane opened.' : `crabarium pane waits: ${opened.reason}` }
+    return { text: await openPane($) }
   })
+
+  // The user changed a crabarium row in /config. An observer: if it fails, the change goes on.
+  on('config.set', async ($, e, next) => {
+    const result = await next(e)
+    // The provider names the row's plugin; a caller that leaves it out names no plugin.
+    if (result.deny === undefined && (e.provider as typeof e.provider | undefined)?.plugin === $.plugin.name) {
+      await settingChanged($, e.key, result.value)
+    }
+    return result
+  }).catch((_$, e, next) => next(e))
 
   // An observer: if it fails, the close goes on.
   on('ui.close', { id: PANE_ID }, (_$, e, next) => {

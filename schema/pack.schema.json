@@ -73,6 +73,7 @@
     "anchors": {
       "type": "object",
       "description": "Named points where parts attach, for example head.",
+      "maxProperties": 64,
       "propertyNames": {
         "type": "string",
         "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
@@ -100,6 +101,7 @@
       "type": "object",
       "description": "The body, in groups that a motion can move or hide. The groups are drawn in this order.",
       "minProperties": 1,
+      "maxProperties": 64,
       "propertyNames": {
         "type": "string",
         "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
@@ -142,12 +144,14 @@
     "parts": {
       "type": "object",
       "description": "Parts by slot (hat, held, back), then by name. They are drawn after the groups.",
+      "maxProperties": 64,
       "propertyNames": {
         "type": "string",
         "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
       },
       "additionalProperties": {
         "type": "object",
+        "maxProperties": 64,
         "propertyNames": {
           "type": "string",
           "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
@@ -229,6 +233,7 @@
     "motions": {
       "type": "object",
       "description": "Motions by name. A motion with the name of a built-in motion (walk, bob, float, swing) replaces it.",
+      "maxProperties": 64,
       "propertyNames": {
         "type": "string",
         "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
@@ -293,6 +298,22 @@
         }
       }
     },
+    "roles": {
+      "type": "object",
+      "description": "The outfits of each role. The roles are explorer, reviewer, builder, tester, planner, researcher. An agent of a role gets one of its outfits, picked by weight; the same agent always gets the same one.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^(explorer|reviewer|builder|tester|planner|researcher)$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 16,
+        "items": {
+          "$ref": "#/$defs/outfit"
+        }
+      }
+    },
     "defaults": {
       "type": "object",
       "additionalProperties": false,
@@ -313,6 +334,37 @@
     }
   },
   "$defs": {
+    "outfit": {
+      "type": "object",
+      "required": [
+        "parts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "parts": {
+          "$ref": "#/$defs/selection"
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "How often this outfit is picked, against the others of the role. The default is 1."
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "description": "A part name for each slot.",
+      "maxProperties": 64,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"
+      }
+    },
     "palette": {
       "type": "object",
       "description": "One character for each color. \".\" is transparent and cannot be a key.",
@@ -344,6 +396,7 @@
     "variants": {
       "type": "object",
       "description": "Other rows for the same place, by name. A frame `swap` draws one of them.",
+      "maxProperties": 64,
       "propertyNames": {
         "type": "string",
         "pattern": "^[a-zA-Z][a-zA-Z0-9-]{0,31}$"

@@ -6,12 +6,13 @@ import { atom, read } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 
 import { initialAgents } from '../core/agents'
-import type { AgentBoard } from '../core/agents'
+import type { AgentRow } from '../core/agents'
 import type { MotionMode } from '../core/character'
+import type { Pack, PartSelection } from '../core/pack/pack'
 import { PANE_ID } from '../state'
 import { avatarFrame } from './avatar'
 import type { RasterImage } from './avatar'
-import type { ShownCharacter } from './layout'
+import type { CharacterSize } from './layout'
 
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 
@@ -19,17 +20,26 @@ export function avatarKey(id: string): string {
   return `avatar-${id}`
 }
 
+/**
+ * A character that a render drew: whose (an agent, or a preview figure), in
+ * which pack and outfit, and how large.
+ */
+export type DrawnCharacter = { id: string; size: CharacterSize; row: AgentRow; pack: Pack; parts: PartSelection }
+
 /** The cells of each shown character at `now`, and the time of the next frame change of any of them. */
 export type FramePlan = { images: Map<string, RasterImage>; nextAt: number | null }
 
-export function framePlan(board: AgentBoard, characters: readonly ShownCharacter[], now: number, mode: MotionMode): FramePlan {
-  const rows = new Map(board.rows.map(r => [r.id, r]))
+/** `latest` holds newer agent rows than the characters carry: a status can change between renders. */
+export function framePlan(
+  characters: readonly DrawnCharacter[],
+  now: number,
+  mode: MotionMode,
+  latest?: ReadonlyMap<string, AgentRow>,
+): FramePlan {
   const images = new Map<string, RasterImage>()
   let nextAt: number | null = null
-  for (const { id, size } of characters) {
-    const row = rows.get(id)
-    if (row === undefined) continue
-    const frame = avatarFrame(row, now, mode, size)
+  for (const { id, size, row, pack, parts } of characters) {
+    const frame = avatarFrame(pack, parts, latest?.get(id) ?? row, now, mode, size)
     images.set(id, frame.image)
     if (frame.nextAt !== null) nextAt = nextAt === null ? frame.nextAt : Math.min(nextAt, frame.nextAt)
   }
@@ -44,8 +54,8 @@ let timer: Timer | null = null
 let generation = 0
 // The characters that the last render drew, and the cells that each mounted
 // Raster shows now, by Raster key. Only a render changes which characters
-// show and at which size; the loop repaints them.
-let drawn: readonly ShownCharacter[] = []
+// show, in which outfit and at which size; the loop repaints them.
+let drawn: readonly DrawnCharacter[] = []
 const shown = new Map<string, string>()
 
 export function stopFrames(): void {
@@ -73,7 +83,9 @@ function wakeAt($: EngineInterface, mode: MotionMode, nextAt: number | null, now
 
 async function tick($: EngineInterface, mode: MotionMode, current: number): Promise<void> {
   const [board, now] = await Promise.all([read($, agents), $.clock.now()])
-  const { images, nextAt } = framePlan(board, drawn, now, mode)
+  // An agent's status can change between renders, and its motion with it.
+  const rows = new Map(board.rows.map(r => [r.id, r]))
+  const { images, nextAt } = framePlan(drawn, now, mode, rows)
   const changed = [...images].filter(([id, image]) => shown.get(avatarKey(id)) !== image.cells)
   const results = await Promise.all(changed.map(([id, image]) => $.ui.blit({ requestId: PANE_ID, key: avatarKey(id), cells: image.cells })))
   if (current !== generation) return
@@ -91,7 +103,7 @@ async function tick($: EngineInterface, mode: MotionMode, current: number): Prom
 export function framesDrawn(
   $: EngineInterface,
   mode: MotionMode,
-  characters: readonly ShownCharacter[],
+  characters: readonly DrawnCharacter[],
   plan: FramePlan,
   now: number,
 ): void {

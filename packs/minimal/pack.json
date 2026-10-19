@@ -57,6 +57,32 @@
         "palette": {
           "b": "#3b6fd6"
         }
+      },
+      "wig": {
+        "anchor": "head",
+        "pivot": [3, 2],
+        "rows": ["wwwwww", "w....w"],
+        "palette": {
+          "w": "#f2f2f2"
+        }
+      }
+    },
+    "held": {
+      "lens": {
+        "anchor": "handR",
+        "pivot": [0, 2],
+        "rows": ["ll", "ll", "k."],
+        "palette": {
+          "l": "#9fd3ff"
+        }
+      },
+      "flask": {
+        "anchor": "handR",
+        "pivot": [0, 2],
+        "rows": [".g", "gg", "gg"],
+        "palette": {
+          "g": "#5fd068"
+        }
       }
     }
   },
@@ -107,6 +133,58 @@
   },
   "states": {
     "failed": "slump"
+  },
+  "roles": {
+    "explorer": [
+      {
+        "parts": {
+          "held": "lens"
+        }
+      }
+    ],
+    "researcher": [
+      {
+        "parts": {
+          "held": "lens",
+          "hat": "cap"
+        }
+      }
+    ],
+    "reviewer": [
+      {
+        "parts": {
+          "hat": "wig"
+        }
+      }
+    ],
+    "builder": [
+      {
+        "parts": {
+          "hat": "cap"
+        }
+      }
+    ],
+    "tester": [
+      {
+        "parts": {
+          "held": "flask"
+        }
+      }
+    ],
+    "planner": [
+      {
+        "parts": {
+          "hat": "cap"
+        },
+        "weight": 1
+      },
+      {
+        "parts": {
+          "hat": "wig"
+        },
+        "weight": 1
+      }
+    ]
   },
   "defaults": {
     "parts": {}

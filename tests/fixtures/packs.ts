@@ -42,6 +42,46 @@ const largestPalette = Object.fromEntries(
 export const packFixtures: readonly PackFixture[] = [
   { name: 'a valid pack', json: validPack, schemaValid: true, packValid: true },
   {
+    name: 'roles with weighted outfits',
+    json: edit(p => {
+      p.roles = { reviewer: [{ parts: { hat: 'dot' }, weight: 3 }, { parts: {} }] }
+    }),
+    schemaValid: true,
+    packValid: true,
+  },
+  {
+    name: 'a role that is not in the role list',
+    json: edit(p => {
+      p.roles = { wizard: [{ parts: { hat: 'dot' } }] }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'an outfit weight of 0',
+    json: edit(p => {
+      p.roles = { reviewer: [{ parts: { hat: 'dot' }, weight: 0 }] }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'a role with no outfit',
+    json: edit(p => {
+      p.roles = { reviewer: [] }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'an outfit with a part that the pack does not have',
+    json: edit(p => {
+      p.roles = { reviewer: [{ parts: { hat: 'crown' } }] }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
     name: 'a pack with only the required fields',
     json: edit(p => {
       delete p.anchors
