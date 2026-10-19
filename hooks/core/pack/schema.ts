@@ -13,6 +13,20 @@ export const MAX_FRAMES = 32
 export const MAX_FPS = 30
 /** The character states that `states` can give a motion. */
 export const CHARACTER_STATES = ['entering', 'working', 'idle', 'finished', 'failed', 'leaving'] as const
+/**
+ * The roles that the selector gives an agent. It is a closed set: a
+ * classifier answers one choice over it, and each pack maps the roles that it
+ * has art for.
+ */
+export const ROLES = ['explorer', 'reviewer', 'builder', 'tester', 'planner', 'researcher'] as const
+/** The highest weight of an outfit. */
+export const MAX_WEIGHT = 100
+/**
+ * The most entries in one map of a pack (groups, anchors, slots, parts of a
+ * slot, variants, motions). A pack is untrusted input, and the work to draw a
+ * frame grows with these counts.
+ */
+export const MAX_ENTRIES = 64
 
 const coordinate = { type: 'integer', minimum: 0, maximum: MAX_GRID - 1 } as const
 const point = {
@@ -75,6 +89,7 @@ export const packSchema = {
     anchors: {
       type: 'object',
       description: 'Named points where parts attach, for example head.',
+      maxProperties: MAX_ENTRIES,
       propertyNames: name,
       additionalProperties: point,
     },
@@ -82,6 +97,7 @@ export const packSchema = {
       type: 'object',
       description: 'The body, in groups that a motion can move or hide. The groups are drawn in this order.',
       minProperties: 1,
+      maxProperties: MAX_ENTRIES,
       propertyNames: name,
       additionalProperties: {
         type: 'object',
@@ -93,9 +109,11 @@ export const packSchema = {
     parts: {
       type: 'object',
       description: 'Parts by slot (hat, held, back), then by name. They are drawn after the groups.',
+      maxProperties: MAX_ENTRIES,
       propertyNames: name,
       additionalProperties: {
         type: 'object',
+        maxProperties: MAX_ENTRIES,
         propertyNames: name,
         additionalProperties: {
           type: 'object',
@@ -118,6 +136,7 @@ export const packSchema = {
     motions: {
       type: 'object',
       description: 'Motions by name. A motion with the name of a built-in motion (walk, bob, float, swing) replaces it.',
+      maxProperties: MAX_ENTRIES,
       propertyNames: name,
       additionalProperties: motion('#/$defs/frame'),
     },
@@ -126,6 +145,17 @@ export const packSchema = {
       description: 'The motion for each character state. A state with no motion shows the still character.',
       additionalProperties: false,
       properties: Object.fromEntries(CHARACTER_STATES.map(state => [state, name])),
+    },
+    roles: {
+      type: 'object',
+      description: `The outfits of each role. The roles are ${ROLES.join(', ')}. An agent of a role gets one of its outfits, picked by weight; the same agent always gets the same one.`,
+      propertyNames: { type: 'string', pattern: `^(${ROLES.join('|')})$` },
+      additionalProperties: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 16,
+        items: { $ref: '#/$defs/outfit' },
+      },
     },
     defaults: {
       type: 'object',
@@ -141,6 +171,27 @@ export const packSchema = {
     },
   },
   $defs: {
+    outfit: {
+      type: 'object',
+      required: ['parts'],
+      additionalProperties: false,
+      properties: {
+        parts: { $ref: '#/$defs/selection' },
+        weight: {
+          type: 'integer',
+          minimum: 1,
+          maximum: MAX_WEIGHT,
+          description: 'How often this outfit is picked, against the others of the role. The default is 1.',
+        },
+      },
+    },
+    selection: {
+      type: 'object',
+      description: 'A part name for each slot.',
+      maxProperties: MAX_ENTRIES,
+      propertyNames: name,
+      additionalProperties: name,
+    },
     palette: {
       type: 'object',
       description: 'One character for each color. "." is transparent and cannot be a key.',
@@ -158,6 +209,7 @@ export const packSchema = {
     variants: {
       type: 'object',
       description: 'Other rows for the same place, by name. A frame `swap` draws one of them.',
+      maxProperties: MAX_ENTRIES,
       propertyNames: name,
       additionalProperties: { $ref: '#/$defs/rows' },
     },

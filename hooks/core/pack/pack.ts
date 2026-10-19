@@ -2,7 +2,7 @@
 // the pack is data, and nothing in it runs as code.
 import { own } from '../own'
 import { BUILTIN_MOTIONS } from './motions'
-import { CHARACTER_STATES, MAX_COLORS, packSchema } from './schema'
+import { CHARACTER_STATES, MAX_COLORS, packSchema, ROLES } from './schema'
 import { validateSchema } from './validate'
 import type { SchemaError } from './validate'
 
@@ -36,6 +36,11 @@ export type Motion<F = Frame> = { fps: number; loop: boolean; frames: readonly F
 
 export type CharacterState = (typeof CHARACTER_STATES)[number]
 
+export type Role = (typeof ROLES)[number]
+
+/** A part set that a role can wear, and how often it is picked against the others of the role. */
+export type Outfit = { parts: Readonly<Record<string, string>>; weight?: number }
+
 export type Group = { at: Point; rows: Rows; variants?: Variants }
 
 export type Part = { anchor: string; pivot: Point; rows: Rows; palette?: Palette; variants?: Variants; motion?: Motion<PartFrame> }
@@ -55,6 +60,7 @@ export type Pack = {
   parts?: Readonly<Record<string, Readonly<Record<string, Part>>>>
   motions?: Readonly<Record<string, Motion>>
   states?: Readonly<Partial<Record<CharacterState, string>>>
+  roles?: Readonly<Partial<Record<Role, readonly Outfit[]>>>
   defaults?: { parts?: Readonly<Record<string, string>> }
 }
 
@@ -156,10 +162,16 @@ function checkRelations(pack: Pack): SchemaError[] {
       errors.push({ path: `states.${state}`, message: `${JSON.stringify(motion)} is not a motion in the pack or a built-in motion` })
     }
   }
-  for (const [slot, name] of Object.entries(pack.defaults?.parts ?? {})) {
-    if (partOf(pack, slot, name) === undefined) {
-      errors.push({ path: `defaults.parts.${slot}`, message: `${JSON.stringify(name)} is not a part in parts.${slot}` })
+  const checkParts = (selection: Readonly<Record<string, string>>, path: string): void => {
+    for (const [slot, name] of Object.entries(selection)) {
+      if (partOf(pack, slot, name) === undefined) {
+        errors.push({ path: `${path}.${slot}`, message: `${JSON.stringify(name)} is not a part in parts.${slot}` })
+      }
     }
+  }
+  checkParts(pack.defaults?.parts ?? {}, 'defaults.parts')
+  for (const [role, outfits] of Object.entries(pack.roles ?? {})) {
+    outfits.forEach((outfit, i) => checkParts(outfit.parts, `roles.${role}[${i}].parts`))
   }
   const framePalettes = [
     ...Object.values(pack.motions ?? {}).flatMap(m => m.frames.map(f => f.palette ?? {})),

@@ -84,8 +84,30 @@ export type UsageBoard = {
   agents: Readonly<Record<string, AgentUsage>>
 }
 
+/** A user pack as the mod read it: the text of its `pack.json`, or why it could not read it; the file time and size in bytes. */
+export type UserPackFile = { mtimeMs: number; size: number } & ({ text: string } | { error: string })
+
+/**
+ * The user packs, by directory name. `dir` is the packs directory; `null`
+ * when the mod cannot find the home directory.
+ */
+export type PackFiles = { dir: string | null; packs: Readonly<Record<string, UserPackFile>> }
+
+/** The `userConfig` values that the pane draws with. */
+export type AvatarSettings = { pack: string; avatarMode: 'off' | 'keywords'; avatarRules: string }
+
+/** A pack that the pane shows in place of the agents, from `startedAt` until `until`; `null` when none. */
+export type PackPreview = { pack: string; startedAt: number; until: number } | null
+
 declare module 'claude-code' {
   interface PluginState {
-    crabarium: { session: Shaped<MainSession>; agents: AgentBoard; usage: UsageBoard }
+    crabarium: {
+      session: Shaped<MainSession>
+      agents: AgentBoard
+      usage: UsageBoard
+      packFiles: PackFiles
+      settings: AvatarSettings
+      preview: PackPreview
+    }
   }
 }
