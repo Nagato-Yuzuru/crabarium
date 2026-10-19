@@ -28,6 +28,7 @@ function child(path: string, key: string | number): string {
 }
 
 function shown(value: unknown): string {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- the lib types say string, but JSON.stringify gives undefined for undefined and functions.
   return JSON.stringify(value) ?? String(value)
 }
 

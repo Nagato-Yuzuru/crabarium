@@ -236,7 +236,8 @@ function line(row: AgentRow, c: Context, extra: readonly string[], character: Ch
   // which can be another model than the spawn named (a fallback, a hook).
   const last = usage?.last
   const model = last === undefined ? shortModel(row.model) : shortModel(last.model)
-  const label = last?.effort == null ? model : `${model} ${formatEffort(last.effort)}`
+  const effort = last?.effort
+  const label = effort === undefined || effort === null ? model : `${model} ${formatEffort(effort)}`
   // A narrow line cuts from the end, so the duration and the counts come first.
   const parts = [
     formatDuration(durationMs(row, c.now)),
