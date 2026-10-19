@@ -6,10 +6,10 @@
 // classifier (a later source) answers one choice over the roles. The sources
 // go in priority order and the first valid result wins; no source mixes
 // scores with another.
-import { own } from '../own'
-import { partOf } from '../pack/pack'
-import type { Outfit, Pack, PartSelection, Role } from '../pack/pack'
-import { ROLES } from '../pack/schema'
+import { own } from '../own.ts'
+import { partOf } from '../pack/pack.ts'
+import type { Outfit, Pack, PartSelection, Role } from '../pack/pack.ts'
+import { ROLES } from '../pack/schema.ts'
 
 /** `off` turns off the automatic sources (keywords, type defaults). User rules still apply. */
 export type AvatarMode = 'off' | 'keywords'

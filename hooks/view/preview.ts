@@ -2,15 +2,15 @@
 // agents. One figure plays each state's motion, and one figure wears each
 // role's outfit. Pure: the time comes in as an argument.
 import type { PackPreview } from '../../types'
-import type { AgentRow, AgentStatus } from '../core/agents'
-import { pickOutfit } from '../core/avatar/select'
-import { ENTER_MS } from '../core/character'
-import { DEFAULT_STATES } from '../core/pack/motions'
-import type { CharacterState } from '../core/pack/pack'
-import type { PackEntry } from '../core/pack/registry'
-import { ROLES } from '../core/pack/schema'
-import type { DrawnCharacter } from './frames'
-import type { AgentLine, CharacterSize } from './layout'
+import type { AgentRow, AgentStatus } from '../core/agents.ts'
+import { pickOutfit } from '../core/avatar/select.ts'
+import { ENTER_MS } from '../core/character.ts'
+import { DEFAULT_STATES } from '../core/pack/motions.ts'
+import type { CharacterState } from '../core/pack/pack.ts'
+import type { PackEntry } from '../core/pack/registry.ts'
+import { ROLES } from '../core/pack/schema.ts'
+import type { DrawnCharacter } from './frames.ts'
+import type { AgentLine, CharacterSize } from './layout.ts'
 
 export type { PackPreview }
 

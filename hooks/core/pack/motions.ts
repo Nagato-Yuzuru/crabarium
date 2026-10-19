@@ -1,7 +1,7 @@
 // The built-in motions. They move only `*`, the whole character, so they work
 // on each pack. A pack motion with the same name replaces one.
-import { own } from '../own'
-import type { CharacterState, Motion, Pack } from './pack'
+import { own } from '../own.ts'
+import type { CharacterState, Motion, Pack } from './pack.ts'
 
 const UP = { offset: { '*': [0, -1] } } as const
 

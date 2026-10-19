@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { stepEvent } from '../hooks/collect'
-import { contextWindowOf } from '../hooks/core/usage/models'
-import { cacheHitRate, contextPercent, initialUsage, newTokens, reduceUsage, sessionSums } from '../hooks/core/usage/usage'
-import type { StepFinished, TokenSums } from '../hooks/core/usage/usage'
-import { formatEffort, formatTokens } from '../hooks/view/layout'
+import { stepEvent } from '../hooks/collect.ts'
+import { contextWindowOf } from '../hooks/core/usage/models.ts'
+import { cacheHitRate, contextPercent, initialUsage, newTokens, reduceUsage, sessionSums } from '../hooks/core/usage/usage.ts'
+import type { StepFinished, TokenSums } from '../hooks/core/usage/usage.ts'
+import { formatEffort, formatTokens } from '../hooks/view/layout.ts'
 
 function step(agentId: string | null, model: string, tokens: TokenSums, effort: string | null = null): StepFinished {
   return { kind: 'step-finished', agentId, model, effort, tokens }

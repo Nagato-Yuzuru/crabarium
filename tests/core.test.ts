@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { usageEvent } from '../hooks/collect'
-import { cacheTtlMs, initialSession, reduceSession } from '../hooks/core/session'
-import { isSupportedEngine } from '../hooks/core/version'
+import { usageEvent } from '../hooks/collect.ts'
+import { cacheTtlMs, initialSession, reduceSession } from '../hooks/core/session.ts'
+import { isSupportedEngine } from '../hooks/core/version.ts'
 
 function usageRead(at: number) {
   return { kind: 'usage-read', contextPercent: 12, costUsd: 0.5, startedAt: 7, rateLimits: [], turns: 3, at } as const

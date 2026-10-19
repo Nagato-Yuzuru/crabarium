@@ -15,17 +15,17 @@ import type {
 } from 'claude-code'
 import { atom, update } from 'claude-code'
 
-import { refreshPacks, runPackCommand, settingChanged } from './commands'
-import type { AgentEvent } from './core/agents'
-import { initialAgents, reduceAgents } from './core/agents'
-import type { AvatarSettings } from './core/avatar/settings'
-import { initialSettings } from './core/avatar/settings'
-import type { SessionEvent } from './core/session'
-import { cacheTtlMs, initialSession, reduceSession } from './core/session'
-import { initialUsage, reduceUsage } from './core/usage/usage'
-import type { StepFinished, UsageEvent } from './core/usage/usage'
-import { isSupportedEngine, MIN_ENGINE_VERSION } from './core/version'
-import { PANE_ID, SESSION_SHAPE } from './state'
+import { refreshPacks, runPackCommand, settingChanged } from './commands.ts'
+import type { AgentEvent } from './core/agents.ts'
+import { initialAgents, reduceAgents } from './core/agents.ts'
+import type { AvatarSettings } from './core/avatar/settings.ts'
+import { initialSettings } from './core/avatar/settings.ts'
+import type { SessionEvent } from './core/session.ts'
+import { cacheTtlMs, initialSession, reduceSession } from './core/session.ts'
+import { initialUsage, reduceUsage } from './core/usage/usage.ts'
+import type { StepFinished, UsageEvent } from './core/usage/usage.ts'
+import { isSupportedEngine, MIN_ENGINE_VERSION } from './core/version.ts'
+import { PANE_ID, SESSION_SHAPE } from './state.ts'
 
 const session = atom({ plugin: 'crabarium', key: 'session' } as const, initialSession, { shape: SESSION_SHAPE })
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)

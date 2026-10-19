@@ -1,6 +1,6 @@
 // Pixel grid -> Raster cells. Each terminal cell shows two pixels, one above
 // the other, with half-block characters. Pure: no engine calls.
-import type { PixelGrid } from '../core/pack/pack'
+import type { PixelGrid } from '../core/pack/pack.ts'
 
 /** The Raster color word for the terminal's default color. */
 export const DEFAULT_COLOR = 0x01000000

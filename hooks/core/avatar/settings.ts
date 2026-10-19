@@ -1,6 +1,6 @@
 // The `userConfig` values that the pane draws with, as the state holds them.
 import type { AvatarSettings } from '../../../types'
-import { avatarMode } from './select'
+import { avatarMode } from './select.ts'
 
 export type { AvatarSettings }
 

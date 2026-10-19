@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import type { AgentRow } from '../hooks/core/agents'
-import { characterPose, characterState, ENTER_MS, frameAt } from '../hooks/core/character'
-import { BUILTIN_MOTIONS, motionOf } from '../hooks/core/pack/motions'
-import { compose, parsePack } from '../hooks/core/pack/pack'
-import type { Motion, Pack, Part, Pose } from '../hooks/core/pack/pack'
-import { builtinPack } from '../hooks/view/avatar'
-import { validPack } from './fixtures/packs'
+import type { AgentRow } from '../hooks/core/agents.ts'
+import { characterPose, characterState, ENTER_MS, frameAt } from '../hooks/core/character.ts'
+import { BUILTIN_MOTIONS, motionOf } from '../hooks/core/pack/motions.ts'
+import { compose, parsePack } from '../hooks/core/pack/pack.ts'
+import type { Motion, Pack, Part, Pose } from '../hooks/core/pack/pack.ts'
+import { builtinPack } from '../hooks/view/avatar.ts'
+import { validPack } from './fixtures/packs.ts'
 
 const RED = 0xff0000
 const BLUE = 0x0000ff

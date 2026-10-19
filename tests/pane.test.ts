@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine, MockClock } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { PANE_ID } from '../hooks/state'
+import { PANE_ID } from '../hooks/state.ts'
 
 const paneProps = {
   title: 'crabarium',

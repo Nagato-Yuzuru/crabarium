@@ -1,12 +1,12 @@
 // The pane layout model: which blocks show at a width, and the agents as
 // trees. Pure: the time and the width come in as arguments. The terminal and
 // the Svg renderer draw the same model.
-import { durationMs, isEnded } from '../core/agents'
-import type { AgentBoard, AgentRow, AgentStatus } from '../core/agents'
-import { cacheLeftMs, tokensPerSecond, turnCost } from '../core/session'
-import type { MainSession, RateLimit } from '../core/session'
-import { cacheHitRate, contextPercent, newTokens, sessionSums } from '../core/usage/usage'
-import type { AgentUsage, UsageBoard } from '../core/usage/usage'
+import { durationMs, isEnded } from '../core/agents.ts'
+import type { AgentBoard, AgentRow, AgentStatus } from '../core/agents.ts'
+import { cacheLeftMs, tokensPerSecond, turnCost } from '../core/session.ts'
+import type { MainSession, RateLimit } from '../core/session.ts'
+import { cacheHitRate, contextPercent, newTokens, sessionSums } from '../core/usage/usage.ts'
+import type { AgentUsage, UsageBoard } from '../core/usage/usage.ts'
 
 /** The narrowest body, in columns, at which each block still shows. */
 export const STEP = { figures: 80, cards: 64, small: 56, character: 48 } as const

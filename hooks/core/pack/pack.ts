@@ -1,10 +1,10 @@
 // A character pack: parse and check `pack.json`, then compose pixels. Pure:
 // the pack is data, and nothing in it runs as code.
-import { own } from '../own'
-import { BUILTIN_MOTIONS } from './motions'
-import { CHARACTER_STATES, MAX_COLORS, packSchema, ROLES } from './schema'
-import { validateSchema } from './validate'
-import type { SchemaError } from './validate'
+import { own } from '../own.ts'
+import { BUILTIN_MOTIONS } from './motions.ts'
+import { CHARACTER_STATES, MAX_COLORS, packSchema, ROLES } from './schema.ts'
+import { validateSchema } from './validate.ts'
+import type { SchemaError } from './validate.ts'
 
 export type { SchemaError }
 

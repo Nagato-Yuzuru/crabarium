@@ -33,8 +33,11 @@ function shown(value: unknown): string {
 
 class Validator {
   readonly errors: SchemaError[] = []
+  private readonly root: Schema
 
-  constructor(private readonly root: Schema) {}
+  constructor(root: Schema) {
+    this.root = root
+  }
 
   private fail(path: string, message: string): void {
     this.errors.push({ path: path === '' ? '(root)' : path, message })

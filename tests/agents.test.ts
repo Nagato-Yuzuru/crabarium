@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { listedEvent } from '../hooks/collect'
-import { durationMs, initialAgents, reduceAgents } from '../hooks/core/agents'
-import type { AgentBoard, AgentEvent } from '../hooks/core/agents'
+import { listedEvent } from '../hooks/collect.ts'
+import { durationMs, initialAgents, reduceAgents } from '../hooks/core/agents.ts'
+import type { AgentBoard, AgentEvent } from '../hooks/core/agents.ts'
 
 function spawned(id: string, at: number, fields: Partial<Extract<AgentEvent, { kind: 'agent-spawned' }>> = {}): AgentEvent {
   return {

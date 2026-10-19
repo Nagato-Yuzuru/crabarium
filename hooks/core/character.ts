@@ -1,10 +1,10 @@
 // What each character shows at a time: its state from the agent status, and
 // the frame of each motion. Pure: the time comes in as an argument.
-import type { AgentRow } from './agents'
-import { isEnded } from './agents'
-import { motionOf } from './pack/motions'
-import { partOf } from './pack/pack'
-import type { CharacterState, Motion, Pack, PartFrame, PartSelection, Pose } from './pack/pack'
+import type { AgentRow } from './agents.ts'
+import { isEnded } from './agents.ts'
+import { motionOf } from './pack/motions.ts'
+import { partOf } from './pack/pack.ts'
+import type { CharacterState, Motion, Pack, PartFrame, PartSelection, Pose } from './pack/pack.ts'
 
 /** How long a new character is `entering` before it is `working`. */
 export const ENTER_MS = 1500

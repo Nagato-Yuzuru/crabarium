@@ -5,14 +5,14 @@
 import { atom, read } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 
-import { initialAgents } from '../core/agents'
-import type { AgentRow } from '../core/agents'
-import type { MotionMode } from '../core/character'
-import type { Pack, PartSelection } from '../core/pack/pack'
-import { PANE_ID } from '../state'
-import { avatarFrame } from './avatar'
-import type { RasterImage } from './avatar'
-import type { CharacterSize } from './layout'
+import { initialAgents } from '../core/agents.ts'
+import type { AgentRow } from '../core/agents.ts'
+import type { MotionMode } from '../core/character.ts'
+import type { Pack, PartSelection } from '../core/pack/pack.ts'
+import { PANE_ID } from '../state.ts'
+import { avatarFrame } from './avatar.ts'
+import type { RasterImage } from './avatar.ts'
+import type { CharacterSize } from './layout.ts'
 
 const agents = atom({ plugin: 'crabarium', key: 'agents' } as const, initialAgents)
 

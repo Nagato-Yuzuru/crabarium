@@ -6,6 +6,7 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "rewriteRelativeImportExtensions": false,
     "strict": true,
     "noUncheckedIndexedAccess": true,
