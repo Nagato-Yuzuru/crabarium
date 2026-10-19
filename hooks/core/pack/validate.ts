@@ -28,13 +28,17 @@ function child(path: string, key: string | number): string {
 }
 
 function shown(value: unknown): string {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- the lib types say string, but JSON.stringify gives undefined for undefined and functions.
   return JSON.stringify(value) ?? String(value)
 }
 
 class Validator {
   readonly errors: SchemaError[] = []
+  private readonly root: Schema
 
-  constructor(private readonly root: Schema) {}
+  constructor(root: Schema) {
+    this.root = root
+  }
 
   private fail(path: string, message: string): void {
     this.errors.push({ path: path === '' ? '(root)' : path, message })

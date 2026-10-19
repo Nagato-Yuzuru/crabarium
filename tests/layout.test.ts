@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import type { AgentBoard, AgentRow } from '../hooks/core/agents'
-import { halve } from '../hooks/core/pack/pack'
-import { initialSession } from '../hooks/core/session'
-import type { PromptCache } from '../hooks/core/session'
-import { initialUsage, reduceUsage } from '../hooks/core/usage/usage'
-import type { UsageBoard } from '../hooks/core/usage/usage'
-import { FINISHED_TREES, formatDuration, header, LINGER_MS, paneLayout, shortModel, stepsFor } from '../hooks/view/layout'
-import type { PaneLayout } from '../hooks/view/layout'
+import type { AgentBoard, AgentRow } from '../hooks/core/agents.ts'
+import { halve } from '../hooks/core/pack/pack.ts'
+import { initialSession } from '../hooks/core/session.ts'
+import type { PromptCache } from '../hooks/core/session.ts'
+import { initialUsage, reduceUsage } from '../hooks/core/usage/usage.ts'
+import type { UsageBoard } from '../hooks/core/usage/usage.ts'
+import { FINISHED_TREES, formatDuration, header, LINGER_MS, paneLayout, shortModel, stepsFor } from '../hooks/view/layout.ts'
+import type { PaneLayout } from '../hooks/view/layout.ts'
 
 function row(id: string, fields: Partial<AgentRow> = {}): AgentRow {
   return {

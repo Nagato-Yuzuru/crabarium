@@ -3,7 +3,7 @@
 // it runs as code.
 import type { EngineInterface } from 'claude-code'
 
-import type { PackFiles } from './core/pack/registry'
+import type { PackFiles } from './core/pack/registry.ts'
 
 /** No user packs, and no directory found yet. */
 export const NO_PACK_FILES: PackFiles = { dir: null, packs: {} }

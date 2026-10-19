@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { compose, parsePack, parsePackText } from '../hooks/core/pack/pack'
-import type { Pack, PixelGrid } from '../hooks/core/pack/pack'
-import { packSchema } from '../hooks/core/pack/schema'
-import { validateSchema } from '../hooks/core/pack/validate'
-import { builtinPackTexts } from '../hooks/packs.generated'
-import { builtinPack } from '../hooks/view/avatar'
-import { cellsBase64, DEFAULT_COLOR, halfBlockCells } from '../hooks/view/raster'
-import { packFixtures, validPack } from './fixtures/packs'
+import { compose, parsePack, parsePackText } from '../hooks/core/pack/pack.ts'
+import type { Pack, PixelGrid } from '../hooks/core/pack/pack.ts'
+import { packSchema } from '../hooks/core/pack/schema.ts'
+import { validateSchema } from '../hooks/core/pack/validate.ts'
+import { builtinPackTexts } from '../hooks/packs.generated.ts'
+import { builtinPack } from '../hooks/view/avatar.ts'
+import { cellsBase64, DEFAULT_COLOR, halfBlockCells } from '../hooks/view/raster.ts'
+import { packFixtures, validPack } from './fixtures/packs.ts'
 
 const RED = 0xff0000
 const GREEN = 0x00ff00

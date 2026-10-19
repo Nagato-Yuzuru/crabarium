@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { avatarMode, parseRules, pickOutfit, selectOutfit, stem } from '../hooks/core/avatar/select'
-import type { AgentInfo, Settings } from '../hooks/core/avatar/select'
-import { parsePack } from '../hooks/core/pack/pack'
-import type { Pack } from '../hooks/core/pack/pack'
-import { validPack } from './fixtures/packs'
+import { avatarMode, parseRules, pickOutfit, selectOutfit, stem } from '../hooks/core/avatar/select.ts'
+import type { AgentInfo, Settings } from '../hooks/core/avatar/select.ts'
+import { parsePack } from '../hooks/core/pack/pack.ts'
+import type { Pack } from '../hooks/core/pack/pack.ts'
+import { validPack } from './fixtures/packs.ts'
 
 // The fixture pack with three hats and roles for some of them.
 function packWith(roles: unknown): Pack {

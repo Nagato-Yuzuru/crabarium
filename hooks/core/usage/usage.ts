@@ -7,7 +7,7 @@
 // while the engine's cost keeps the earlier part. There is no cost per agent:
 // see the note in ./models.ts.
 import type { AgentUsage, LastRequest, TokenSums, UsageBoard } from '../../../types'
-import { contextWindowOf, promptTokens } from './models'
+import { contextWindowOf, promptTokens } from './models.ts'
 
 export type { AgentUsage, LastRequest, TokenSums, UsageBoard }
 

@@ -1,7 +1,6 @@
 // The JSON Schema of `pack.json`: the one source of the pack format.
 // `validate` in ./validate.ts reads this object, and `pnpm gen` writes it to
-// schema/pack.schema.json for editors. This file has no imports, so that the
-// generator can load it without the engine.
+// schema/pack.schema.json for editors.
 
 /** The largest grid side, in pixels. */
 export const MAX_GRID = 32

@@ -1,8 +1,8 @@
 // The packs that the user can select: the built-in packs and the user packs.
 // Pure: the file texts come in as arguments.
 import type { PackFiles } from '../../../types'
-import { parsePackText } from './pack'
-import type { Pack, ParseResult } from './pack'
+import { parsePackText } from './pack.ts'
+import type { Pack, ParseResult } from './pack.ts'
 
 export type { PackFiles }
 

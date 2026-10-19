@@ -3,15 +3,15 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import { parseRules } from './core/avatar/select'
-import type { RuleError } from './core/avatar/select'
-import { initialSettings } from './core/avatar/settings'
-import type { AvatarSettings } from './core/avatar/settings'
-import { packEntries, RESERVED } from './core/pack/registry'
-import type { PackEntry, PackFiles } from './core/pack/registry'
-import { NO_PACK_FILES, samePackFiles, scanPacks } from './packs'
-import { builtinPackTexts } from './packs.generated'
-import { PREVIEW_MS } from './view/preview'
+import { parseRules } from './core/avatar/select.ts'
+import type { RuleError } from './core/avatar/select.ts'
+import { initialSettings } from './core/avatar/settings.ts'
+import type { AvatarSettings } from './core/avatar/settings.ts'
+import { packEntries, RESERVED } from './core/pack/registry.ts'
+import type { PackEntry, PackFiles } from './core/pack/registry.ts'
+import { builtinPackTexts } from './packs.generated.ts'
+import { NO_PACK_FILES, samePackFiles, scanPacks } from './packs.ts'
+import { PREVIEW_MS } from './view/preview.ts'
 
 const settings = atom({ plugin: 'crabarium', key: 'settings' } as const, initialSettings)
 const packFiles = atom({ plugin: 'crabarium', key: 'packFiles' } as const, NO_PACK_FILES)

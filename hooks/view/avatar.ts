@@ -1,13 +1,13 @@
 // The character art that the pane draws for an agent row.
-import type { AgentRow } from '../core/agents'
-import { DEFAULT_PACK } from '../core/avatar/settings'
-import { characterPose } from '../core/character'
-import type { MotionMode } from '../core/character'
-import { compose, halve, parsePackText } from '../core/pack/pack'
-import type { Pack, PartSelection } from '../core/pack/pack'
-import { builtinPackTexts } from '../packs.generated'
-import type { CharacterSize } from './layout'
-import { cellsBase64, halfBlockCells } from './raster'
+import type { AgentRow } from '../core/agents.ts'
+import { DEFAULT_PACK } from '../core/avatar/settings.ts'
+import { characterPose } from '../core/character.ts'
+import type { MotionMode } from '../core/character.ts'
+import { compose, halve, parsePackText } from '../core/pack/pack.ts'
+import type { Pack, PartSelection } from '../core/pack/pack.ts'
+import { builtinPackTexts } from '../packs.generated.ts'
+import type { CharacterSize } from './layout.ts'
+import { cellsBase64, halfBlockCells } from './raster.ts'
 
 /** A built-in pack. The tests parse each one, so a failure here is a bug in the repository. */
 export function builtinPack(name: string): Pack {
