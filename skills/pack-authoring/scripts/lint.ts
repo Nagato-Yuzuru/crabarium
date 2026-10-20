@@ -3,6 +3,7 @@
 // author can fix it without a guess. Pure.
 import { compose, halve, variantRows } from '../../../hooks/core/pack/pack.ts'
 import type { Pack, PartSelection, PixelGrid, Pose, Rows, Variants } from '../../../hooks/core/pack/pack.ts'
+import type { Rule } from '../../../hooks/core/pack/rules.ts'
 import { ROLES } from '../../../hooks/core/pack/schema.ts'
 import { BACKGROUNDS, outfitFigures, stateFigures } from './sheet.ts'
 import type { Figure } from './sheet.ts'
@@ -148,9 +149,9 @@ function eyeChecks(pack: Pack, figure: Figure, where: string): Finding[] {
 // An outfit label is the role, then the outfit number when it has several.
 const roleOf = (label: string): string => label.split(' ')[0]!
 
-function outfitChecks(pack: Pack): Finding[] {
+function outfitChecks(pack: Pack, rules: readonly Rule[]): Finding[] {
   const findings: Finding[] = []
-  const figures = outfitFigures(pack)
+  const figures = outfitFigures(pack, rules)
   const grids = figures.map(f => compose(pack, f.parts, f.pose))
   figures.forEach((a, i) => {
     figures.slice(i + 1).forEach((b, k) => {
@@ -288,9 +289,9 @@ function smallChecks(pack: Pack): Finding[] {
   ]
 }
 
-function motionChecks(pack: Pack): Finding[] {
+function motionChecks(pack: Pack, rules: readonly Rule[]): Finding[] {
   const findings: Finding[] = []
-  for (const { state, motion, figures } of stateFigures(pack)) {
+  for (const { state, motion, figures } of stateFigures(pack, rules)) {
     if (figures.length < 2) continue
     const grids = figures.map(f => compose(pack, f.parts, f.pose))
     if (grids.every(g => difference(g, grids[0]!) === 0)) {
@@ -317,19 +318,19 @@ function motionChecks(pack: Pack): Finding[] {
 }
 
 /** All findings, errors first. */
-export function lintPack(pack: Pack): Finding[] {
-  const outfits = outfitFigures(pack)
-  const frames = stateFigures(pack).flatMap(({ state, figures }) =>
+export function lintPack(pack: Pack, rules: readonly Rule[] = []): Finding[] {
+  const outfits = outfitFigures(pack, rules)
+  const frames = stateFigures(pack, rules).flatMap(({ state, figures }) =>
     figures.map(f => ({ figure: f, where: `states.${state} frame ${f.label}` })),
   )
   const findings = [
     ...outfits.flatMap(f => figureChecks(pack, f, `outfit ${f.label}`).concat(eyeChecks(pack, f, `outfit ${f.label}`))),
     ...frames.flatMap(({ figure, where }) => figureChecks(pack, figure, where)),
-    ...outfitChecks(pack),
+    ...outfitChecks(pack, rules),
     ...paletteChecks(pack),
     ...fadeChecks(pack),
     ...smallChecks(pack),
-    ...motionChecks(pack),
+    ...motionChecks(pack, rules),
   ]
   // A frame repeats the outfit's finding when the motion does not cause it.
   const seen = new Set<string>()

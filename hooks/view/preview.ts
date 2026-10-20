@@ -5,10 +5,10 @@ import type { PackPreview } from '../../types'
 import type { AgentRow, AgentStatus } from '../core/agents.ts'
 import { pickOutfit } from '../core/avatar/select.ts'
 import { ENTER_MS } from '../core/character.ts'
-import { DEFAULT_STATES } from '../core/pack/motions.ts'
-import type { CharacterState } from '../core/pack/pack.ts'
+import type { CharacterState, Role } from '../core/pack/pack.ts'
 import type { PackEntry } from '../core/pack/registry.ts'
 import { ROLES } from '../core/pack/schema.ts'
+import { styleOf } from '../core/pack/style.ts'
 import type { DrawnCharacter } from './frames.ts'
 import type { AgentLine, CharacterSize } from './layout.ts'
 
@@ -72,17 +72,24 @@ export function previewModel(
       characters: [],
     }
   }
-  const { pack } = entry.result
+  const { pack, rules } = entry.result
   const defaults = pack.defaults?.parts ?? {}
   const lines: AgentLine[] = []
   const characters: DrawnCharacter[] = []
-  const add = (id: string, description: string, detail: string, status: AgentStatus, parts: Readonly<Record<string, string>>): void => {
+  const add = (
+    id: string,
+    description: string,
+    detail: string,
+    status: AgentStatus,
+    role: Role | null,
+    parts: Readonly<Record<string, string>>,
+  ): void => {
     lines.push({ id, description, status, detail, character: size })
-    if (size !== null) characters.push({ id, size, row: figure(id, status, preview), pack, parts })
+    if (size !== null) characters.push({ id, size, row: figure(id, status, preview), look: { pack, rules, role, parts } })
   }
   for (const { state, status } of STATES) {
-    const motion = pack.states?.[state] ?? DEFAULT_STATES[state] ?? 'still'
-    add(`preview:state:${state}`, `state ${state}`, `motion ${motion}`, status, defaults)
+    const motion = styleOf(pack, rules, { role: null, state, parts: defaults }).play ?? 'still'
+    add(`preview:state:${state}`, `state ${state}`, `motion ${motion}`, status, null, defaults)
   }
   for (const role of ROLES) {
     const outfits = pack.roles?.[role]
@@ -90,7 +97,7 @@ export function previewModel(
     if (parts === null) continue
     const outfit = Object.entries(parts).map(([slot, name]) => `${slot}:${name}`)
     const more = outfits!.length > 1 ? [`${outfits!.length} outfits`] : []
-    add(`preview:role:${role}`, `role ${role}`, [...outfit, ...more].join(' · '), 'running', parts)
+    add(`preview:role:${role}`, `role ${role}`, [...outfit, ...more].join(' · '), 'running', role, parts)
   }
   return { title, problem: null, lines, characters }
 }

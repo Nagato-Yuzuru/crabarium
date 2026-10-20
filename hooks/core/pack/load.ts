@@ -4,6 +4,7 @@ import { parsePackText } from './pack.ts'
 import type { Pack, SchemaError } from './pack.ts'
 import { checkRules, parseRules, ruleErrorOf } from './rules.ts'
 import type { Rule } from './rules.ts'
+import { MAX_PACK_BYTES } from './schema.ts'
 
 /** The texts of a pack's files. */
 export type PackSource = { json: string; css?: string }
@@ -12,6 +13,14 @@ export type LoadResult = { ok: true; pack: Pack; rules: readonly Rule[] } | { ok
 
 /** Checks both files. Each error names the field, or the line and column in pack.css. */
 export function loadPack(source: PackSource): LoadResult {
+  // UTF-16 code units: at most the UTF-8 bytes for ASCII, the text a pack is.
+  const size = source.json.length + (source.css?.length ?? 0)
+  if (size > MAX_PACK_BYTES) {
+    return {
+      ok: false,
+      errors: [{ path: '(files)', message: `pack.json and pack.css have ${size} characters; the limit is ${MAX_PACK_BYTES}` }],
+    }
+  }
   const result = parsePackText(source.json)
   const css = source.css === undefined ? { rules: [], errors: [] } : parseRules(source.css)
   if (!result.ok) return { ok: false, errors: [...result.errors, ...css.errors.map(ruleErrorOf)] }

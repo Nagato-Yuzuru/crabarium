@@ -20,6 +20,7 @@ import { deflateSync, inflateSync } from 'node:zlib'
 import { loadPack } from '../../../hooks/core/pack/load.ts'
 import { compose } from '../../../hooks/core/pack/pack.ts'
 import type { Pack } from '../../../hooks/core/pack/pack.ts'
+import type { Rule } from '../../../hooks/core/pack/rules.ts'
 import { ansiRow } from './ansi.ts'
 import { LIBRARY } from './library.ts'
 import { lintPack } from './lint.ts'
@@ -52,26 +53,27 @@ function options(args: readonly string[], flags: readonly string[] = []): { valu
   return { values, rest }
 }
 
-function load(path: string | undefined): Pack {
+function load(path: string | undefined): { pack: Pack; rules: readonly Rule[] } {
   if (path === undefined) throw new UsageError('name a pack.json file')
   // The mod reads pack.css next to pack.json, so the check does too.
   const cssPath = join(dirname(path), 'pack.css')
   const json = readFileSync(path, 'utf8')
   const result = loadPack(existsSync(cssPath) ? { json, css: readFileSync(cssPath, 'utf8') } : { json })
-  if (result.ok) return result.pack
+  if (result.ok) return result
   for (const error of result.errors) console.log(`error  ${error.path}: ${error.message}`)
   console.log(`${result.errors.length} error${result.errors.length === 1 ? '' : 's'}: the mod does not load this pack`)
   process.exit(1)
 }
 
 function check(args: string[]): number {
-  const pack = load(args[0])
+  const { pack } = load(args[0])
   console.log(`ok  ${pack.name}: a valid pack (${pack.grid.width}x${pack.grid.height}, ${Object.keys(pack.groups).length} groups)`)
   return 0
 }
 
 function lint(args: string[]): number {
-  const findings = lintPack(load(args[0]))
+  const { pack, rules } = load(args[0])
+  const findings = lintPack(pack, rules)
   for (const f of findings) console.log(`${f.severity.padEnd(7)} ${f.rule}  ${f.where}: ${f.message}`)
   const errors = findings.filter(f => f.severity === 'error').length
   console.log(`${errors} errors, ${findings.length - errors} warnings`)
@@ -81,21 +83,21 @@ function lint(args: string[]): number {
 function render(args: string[]): number {
   const flags = new Set(args.filter(a => a.startsWith('--')))
   const [path, out] = args.filter(a => !a.startsWith('--'))
-  const pack = load(path)
+  const { pack, rules } = load(path)
   if (flags.has('--ansi')) {
-    const figures = outfitFigures(pack)
+    const figures = outfitFigures(pack, rules)
     console.log(figures.map(f => f.label).join(' | '))
     console.log(ansiRow(figures.map(f => compose(pack, f.parts, f.pose))))
     return 0
   }
   const critic = flags.has('--critic')
   const file = out ?? join(tmpdir(), `crabarium-${pack.name}${critic ? '-critic' : ''}.png`)
-  writeFileSync(file, encodePng(contactSheet(pack, { mode: critic ? 'critic' : 'inspect' }), zlib))
+  writeFileSync(file, encodePng(contactSheet(pack, { mode: critic ? 'critic' : 'inspect', rules }), zlib))
   console.log(file)
   if (critic) {
     // The key is for the author, not for the critic: it names each figure, left to right.
     console.log(
-      `key: ${outfitFigures(pack)
+      `key: ${outfitFigures(pack, rules)
         .map((f, i) => `${i + 1}=${f.label}`)
         .join(' ')}`,
     )
@@ -123,7 +125,7 @@ function addPartCommand(args: string[]): number {
   if (path === undefined || source === undefined) throw new UsageError('add-part <pack.json> <slot-name | part.json>')
   const part = existsSync(source) ? partFile(source) : LIBRARY.find(p => `${p.slot}-${p.name}` === source)
   if (part === undefined) throw new UsageError(`no library part ${source}; run: node pack.ts library`)
-  const result = addPart(load(path), part, {
+  const result = addPart(load(path).pack, part, {
     name: values.get('--name')?.[0],
     anchor: values.get('--anchor')?.[0],
     roles: values.get('--role') ?? [],

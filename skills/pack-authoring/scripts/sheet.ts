@@ -2,10 +2,12 @@
 // small size, on a dark and on a light terminal background. Pure: it gives
 // RGBA pixels, and the caller encodes them.
 import { pickOutfit } from '../../../hooks/core/avatar/select.ts'
-import { DEFAULT_STATES, motionOf } from '../../../hooks/core/pack/motions.ts'
+import { onPose } from '../../../hooks/core/character.ts'
 import { compose, halve } from '../../../hooks/core/pack/pack.ts'
-import type { Pack, PartSelection, PixelGrid, Pose } from '../../../hooks/core/pack/pack.ts'
+import type { Pack, PartSelection, PixelGrid, Pose, Role } from '../../../hooks/core/pack/pack.ts'
+import type { Rule } from '../../../hooks/core/pack/rules.ts'
 import { CHARACTER_STATES, ROLES } from '../../../hooks/core/pack/schema.ts'
+import { motionNamed, styleOf } from '../../../hooks/core/pack/style.ts'
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyph, textWidth } from './font.ts'
 
 /** RGBA, 4 bytes per pixel, row-major. */
@@ -17,30 +19,39 @@ export const BACKGROUNDS = { dark: 0x1e1e1e, light: 0xf4f4f4 } as const
 /** A figure to draw: a label, an outfit, and a pose. */
 export type Figure = { label: string; parts: PartSelection; pose: Pose }
 
-/** The pack defaults, then each outfit of each role, standing still. */
-export function outfitFigures(pack: Pack): Figure[] {
+// A role's base pose when it stands still: its idle style with no motion.
+function stillPose(pack: Pack, rules: readonly Rule[], role: Role | null, parts: PartSelection): Pose {
+  return { body: onPose(pack, styleOf(pack, rules, { role, state: 'idle', parts }), undefined) }
+}
+
+/** The pack defaults, then each outfit of each role, standing still in the role's base pose. */
+export function outfitFigures(pack: Pack, rules: readonly Rule[] = []): Figure[] {
   const defaults = pack.defaults?.parts ?? {}
-  const figures: Figure[] = [{ label: 'default', parts: defaults, pose: {} }]
+  const figures: Figure[] = [{ label: 'default', parts: defaults, pose: stillPose(pack, rules, null, defaults) }]
   for (const role of ROLES) {
     const outfits = pack.roles?.[role] ?? []
     outfits.forEach((outfit, i) => {
       // One outfit at a time: pickOutfit fills the other slots from the defaults.
       const parts = pickOutfit(pack, [outfit], role)
       if (parts === null) return
-      figures.push({ label: outfits.length > 1 ? `${role} ${i + 1}` : role, parts, pose: {} })
+      figures.push({ label: outfits.length > 1 ? `${role} ${i + 1}` : role, parts, pose: stillPose(pack, rules, role, parts) })
     })
   }
   return figures
 }
 
-/** Each frame of each state's motion, in the default outfit. A state with no motion shows one still frame. */
-export function stateFigures(pack: Pack): { state: string; motion: string; figures: Figure[] }[] {
+/** Each frame of each state's motion, in the default outfit, on the base pose. A state with no motion shows one still frame. */
+export function stateFigures(pack: Pack, rules: readonly Rule[] = []): { state: string; motion: string; figures: Figure[] }[] {
   const parts = pack.defaults?.parts ?? {}
   return CHARACTER_STATES.map(state => {
-    const motion = motionOf(pack, state)
-    const name = pack.states?.[state] ?? DEFAULT_STATES[state] ?? 'still'
-    const frames = motion === null ? [{}] : motion.frames
-    return { state, motion: name, figures: frames.map((body, i) => ({ label: `${i + 1}`, parts, pose: { body } })) }
+    const style = styleOf(pack, rules, { role: null, state, parts })
+    const motion = style.play === null ? null : motionNamed(pack, style.play)
+    const frames = motion === null ? [undefined] : motion.frames
+    return {
+      state,
+      motion: style.play ?? 'still',
+      figures: frames.map((frame, i) => ({ label: `${i + 1}`, parts, pose: { body: onPose(pack, style, frame) } })),
+    }
   })
 }
 
@@ -102,6 +113,8 @@ export type SheetOptions = {
   mode: 'inspect' | 'critic'
   /** The widest sheet in pixels; the scale shrinks to fit. */
   maxWidth?: number
+  /** The rules of the pack's pack.css. */
+  rules?: readonly Rule[]
 }
 
 /** Each terminal cell is about 8 screen pixels wide, so 8 is the size a user sees. */
@@ -110,7 +123,7 @@ export const TERMINAL_SCALE = 8
 /** The contact sheet of `pack`. */
 export function contactSheet(pack: Pack, options: SheetOptions): Image {
   const { width: w, height: h } = pack.grid
-  const outfits = outfitFigures(pack)
+  const outfits = outfitFigures(pack, options.rules)
   if (options.mode === 'critic') {
     const gap = TERMINAL_SCALE * 2
     const cellW = w * TERMINAL_SCALE + gap
@@ -125,7 +138,7 @@ export function contactSheet(pack: Pack, options: SheetOptions): Image {
     return canvas.image()
   }
 
-  const states = stateFigures(pack)
+  const states = stateFigures(pack, options.rules)
   const columns = Math.max(outfits.length, 1 + Math.max(...states.map(s => s.figures.length)))
   const maxWidth = options.maxWidth ?? 1500
   const scale = Math.max(4, Math.min(16, Math.floor(maxWidth / (columns * (w + 3)))))

@@ -7,8 +7,7 @@ import type { EngineInterface, Timer } from 'claude-code'
 
 import { initialAgents } from '../core/agents.ts'
 import type { AgentRow } from '../core/agents.ts'
-import type { MotionMode } from '../core/character.ts'
-import type { Pack, PartSelection } from '../core/pack/pack.ts'
+import type { Look, MotionMode } from '../core/character.ts'
 import { PANE_ID } from '../state.ts'
 import { avatarFrame } from './avatar.ts'
 import type { RasterImage } from './avatar.ts'
@@ -21,10 +20,10 @@ export function avatarKey(id: string): string {
 }
 
 /**
- * A character that a render drew: whose (an agent, or a preview figure), in
- * which pack and outfit, and how large.
+ * A character that a render drew: whose (an agent, or a preview figure), how
+ * it looks (pack, rules, role, outfit), and how large.
  */
-export type DrawnCharacter = { id: string; size: CharacterSize; row: AgentRow; pack: Pack; parts: PartSelection }
+export type DrawnCharacter = { id: string; size: CharacterSize; row: AgentRow; look: Look }
 
 /** The cells of each shown character at `now`, and the time of the next frame change of any of them. */
 export type FramePlan = { images: Map<string, RasterImage>; nextAt: number | null }
@@ -38,8 +37,8 @@ export function framePlan(
 ): FramePlan {
   const images = new Map<string, RasterImage>()
   let nextAt: number | null = null
-  for (const { id, size, row, pack, parts } of characters) {
-    const frame = avatarFrame(pack, parts, latest?.get(id) ?? row, now, mode, size)
+  for (const { id, size, row, look } of characters) {
+    const frame = avatarFrame(look, latest?.get(id) ?? row, now, mode, size)
     images.set(id, frame.image)
     if (frame.nextAt !== null) nextAt = nextAt === null ? frame.nextAt : Math.min(nextAt, frame.nextAt)
   }

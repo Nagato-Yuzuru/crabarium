@@ -1,0 +1,4 @@
+/* Which motion each state plays. Working, entering, and leaving walk and idle bobs by default. */
+[state='failed'] {
+  play: slump;
+}

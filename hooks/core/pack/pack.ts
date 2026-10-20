@@ -172,6 +172,13 @@ export function isChannelValue(pack: Pack, channel: string, value: string): bool
   return own(variantsOf(pack, channel), value) !== undefined
 }
 
+/** Whether `channel` at `value` is a drawing that covers one of `nodes`. */
+export function coversAny(pack: Pack, channel: string, value: string, nodes: ReadonlySet<string>): boolean {
+  if (nodes.size === 0 || !covers(own(variantsOf(pack, channel), value))) return false
+  const tree = treeOf(pack)
+  return [...nodes].some(node => node !== channel && lineage(tree, node).includes(channel))
+}
+
 /** The channels of a pack: the root, each group, and each part slot. */
 export function isChannel(pack: Pack, name: string): boolean {
   return name === FIGURE || Object.hasOwn(pack.groups, name) || Object.hasOwn(pack.parts ?? {}, name)
