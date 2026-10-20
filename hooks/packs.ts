@@ -25,14 +25,25 @@ export async function packsDir($: EngineInterface): Promise<string | null> {
   return base === undefined ? null : `${base.replace(/[\\/]+$/, '')}/crabarium/packs`
 }
 
+type Stamp = { mtimeMs: number; size: number }
+
+function stampOf({ mtimeMs, size }: Stamp): Stamp {
+  return { mtimeMs, size }
+}
+
+/** Whether two files have the same time and size; two missing files are the same. */
+function sameStamp(a: Stamp | null, b: Stamp | null): boolean {
+  return a === null || b === null ? a === b : a.mtimeMs === b.mtimeMs && a.size === b.size
+}
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
 /**
- * Reads each `<dir>/<name>/pack.json`. A pack whose file time did not change
- * keeps its text from `previous`, so a check reads only what changed. A
- * missing directory is no packs.
+ * Reads each `<dir>/<name>/pack.json`, and its `pack.css` when it has one.
+ * A pack whose file times did not change keeps its texts from `previous`, so
+ * a check reads only what changed. A missing directory is no packs.
  */
 export async function scanPacks($: EngineInterface, previous: PackFiles): Promise<PackFiles> {
   const dir = await packsDir($)
@@ -44,15 +55,21 @@ export async function scanPacks($: EngineInterface, previous: PackFiles): Promis
       .filter(e => e.kind === 'dir' || e.isLink)
       .map(async ({ name }): Promise<[string, PackFiles['packs'][string]] | null> => {
         const file = `${dir}/${name}/pack.json`
-        const stat = await $.fs.stat(file).catch(() => null)
-        // A directory with no pack.json is not a pack.
+        const cssFile = `${dir}/${name}/pack.css`
+        const [stat, cssStat] = await Promise.all([$.fs.stat(file).catch(() => null), $.fs.stat(cssFile).catch(() => null)])
+        // A directory with no pack.json is not a pack. A pack.css is optional.
         if (stat === null || stat.kind !== 'file') return null
+        const css = cssStat?.kind === 'file' ? cssStat : null
         // A read error is read again: a fix of the file mode does not change its time.
         const old = kept[name]
-        if (old !== undefined && 'text' in old && old.mtimeMs === stat.mtimeMs && old.size === stat.size) return [name, old]
+        if (old !== undefined && 'text' in old && sameStamp(old, stat) && sameStamp(old.css ?? null, css)) return [name, old]
         const { mtimeMs, size } = stat
         try {
-          return [name, { mtimeMs, size, text: await $.fs.read(file) }]
+          const [text, cssRead] = await Promise.all([
+            $.fs.read(file),
+            css === null ? null : $.fs.read(cssFile).then(t => ({ ...stampOf(css), text: t })),
+          ])
+          return [name, cssRead === null ? { mtimeMs, size, text } : { mtimeMs, size, text, css: cssRead }]
         } catch (error) {
           return [name, { mtimeMs, size, error: message(error) }]
         }
@@ -69,7 +86,8 @@ export function samePackFiles(a: PackFiles, b: PackFiles): boolean {
     names.length === Object.keys(b.packs).length &&
     names.every(n => {
       const [x, y] = [a.packs[n]!, b.packs[n]]
-      return y !== undefined && x.mtimeMs === y.mtimeMs && x.size === y.size && 'text' in x === 'text' in y
+      if (y === undefined || !sameStamp(x, y) || 'text' in x !== 'text' in y) return false
+      return !('text' in x && 'text' in y) || sameStamp(x.css ?? null, y.css ?? null)
     })
   )
 }

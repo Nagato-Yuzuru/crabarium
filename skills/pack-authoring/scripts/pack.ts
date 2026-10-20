@@ -14,10 +14,11 @@
 // Exit code: 0 when the pack is fine, 1 on an error in the pack, 2 on a usage error.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { deflateSync, inflateSync } from 'node:zlib'
 
-import { compose, parsePackText } from '../../../hooks/core/pack/pack.ts'
+import { loadPack } from '../../../hooks/core/pack/load.ts'
+import { compose } from '../../../hooks/core/pack/pack.ts'
 import type { Pack } from '../../../hooks/core/pack/pack.ts'
 import { ansiRow } from './ansi.ts'
 import { LIBRARY } from './library.ts'
@@ -53,7 +54,10 @@ function options(args: readonly string[], flags: readonly string[] = []): { valu
 
 function load(path: string | undefined): Pack {
   if (path === undefined) throw new UsageError('name a pack.json file')
-  const result = parsePackText(readFileSync(path, 'utf8'))
+  // The mod reads pack.css next to pack.json, so the check does too.
+  const cssPath = join(dirname(path), 'pack.css')
+  const json = readFileSync(path, 'utf8')
+  const result = loadPack(existsSync(cssPath) ? { json, css: readFileSync(cssPath, 'utf8') } : { json })
   if (result.ok) return result.pack
   for (const error of result.errors) console.log(`error  ${error.path}: ${error.message}`)
   console.log(`${result.errors.length} error${result.errors.length === 1 ? '' : 's'}: the mod does not load this pack`)

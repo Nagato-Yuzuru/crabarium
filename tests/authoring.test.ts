@@ -88,7 +88,7 @@ describe('font', () => {
 
 describe('png', () => {
   test('a sheet survives encode and decode', () => {
-    const sheet = contactSheet(builtinPack('minimal'), { mode: 'critic' })
+    const sheet = contactSheet(builtinPack('minimal').pack, { mode: 'critic' })
     const back = decodePng(encodePng(sheet, storedZlib), storedZlib)
     expect([back.width, back.height]).toEqual([sheet.width, sheet.height])
     expect([...back.data]).toEqual([...sheet.data])
@@ -134,7 +134,7 @@ function encodeRaw(width: number, height: number, type: number, raw: Uint8Array,
 
 describe('contact sheet', () => {
   test('the critic sheet shows each outfit at terminal size, on dark then light', () => {
-    const pack = builtinPack('minimal')
+    const pack = builtinPack('minimal').pack
     const sheet = contactSheet(pack, { mode: 'critic' })
     const gap = TERMINAL_SCALE * 2
     // minimal: 8 outfits (default, 6 roles, planner has 2).
@@ -277,7 +277,7 @@ describe('library', () => {
 
 describe('trace', () => {
   test('pixel art at 10x on white comes back exact, eyes and all', () => {
-    const pack = builtinPack('minimal')
+    const pack = builtinPack('minimal').pack
     const grid = compose(pack, { hat: 'cap' })
     const [s, m] = [10, 30]
     const width = grid.width * s + 2 * m

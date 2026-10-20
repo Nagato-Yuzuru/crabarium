@@ -16,9 +16,11 @@
     "verify": "pnpm check && pnpm validate && pnpm test"
   },
   "devDependencies": {
+    "@adobe/css-tools": "4.5.0",
     "@anthropic-ai/claude-code": "2.1.307",
     "@types/node": "24.19.2",
     "ajv": "8.20.0",
+    "css-what": "8.0.0",
     "vite-plus": "1.1.0"
   }
 }

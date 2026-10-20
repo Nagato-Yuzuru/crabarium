@@ -10,7 +10,7 @@ import type { MotionMode } from '../core/character.ts'
 import { activePack, packEntries } from '../core/pack/registry.ts'
 import { initialSession } from '../core/session.ts'
 import { initialUsage } from '../core/usage/usage.ts'
-import { builtinPackTexts } from '../packs.generated.ts'
+import { builtinPacks } from '../packs.generated.ts'
 import { NO_PACK_FILES } from '../packs.ts'
 import { PANE_ID, SESSION_SHAPE } from '../state.ts'
 import { fallbackPack } from './avatar.ts'
@@ -101,7 +101,7 @@ export function registerPane(on: On, mode: MotionMode): void {
       read($, preview),
     ])
     const layout = paneLayout(board, s, u, now, columns, raster !== undefined)
-    const entries = packEntries(builtinPackTexts, files)
+    const entries = packEntries(builtinPacks, files)
     const active = activePack(entries, config.pack, fallbackPack())
     const choice = { mode: config.avatarMode, rules: parseRules(config.avatarRules).rules }
     const rows = new Map(board.rows.map(r => [r.id, r]))

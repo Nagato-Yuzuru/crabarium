@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@adobe/css-tools':
+        specifier: 4.5.0
+        version: 4.5.0
       '@anthropic-ai/claude-code':
         specifier: 2.1.307
         version: 2.1.307
@@ -17,11 +20,17 @@ importers:
       ajv:
         specifier: 8.20.0
         version: 8.20.0
+      css-what:
+        specifier: 8.0.0
+        version: 8.0.0
       vite-plus:
         specifier: 1.1.0
         version: 1.1.0(@types/node@24.19.2)(@vitest/ui@5.0.3)(typescript@7.0.2)
 
 packages:
+
+  '@adobe/css-tools@4.5.0':
+    resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
 
   '@anthropic-ai/claude-code-darwin-arm64@2.1.307':
     resolution: {integrity: sha512-bBNAygs3y8j4jkwmBoq9PyYNHaYj4KsJ5Ca2dtj8CGeUAiFsTCOzzwNMbXHhMAhAkg7m0jXUo2S1YDQmYh1gUw==}
@@ -873,6 +882,10 @@ packages:
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
+  css-what@8.0.0:
+    resolution: {integrity: sha512-DH0Bqq3DNp5tdOReuNyAA+Ev4Y2GS5FMbZpeTLP6C4CDi0h5nL0BmUPChXw3o/qbHLDWHl49sbNqQVY7bMSDdw==}
+    engines: {node: '>=20.19.0'}
+
   dequal@2.0.3:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
     engines: {node: '>=6'}
@@ -1206,6 +1219,8 @@ packages:
     resolution: {integrity: sha512-IBnAdNVMswWbJcM7woPluOudectJzFjJ1N8jVRxP9Uq4CIv5hZdBIcdmtRbFDYF/Ph2j2gVup4YJ4N9mh0jYFA==}
 
 snapshots:
+
+  '@adobe/css-tools@4.5.0': {}
 
   '@anthropic-ai/claude-code-darwin-arm64@2.1.307':
     optional: true
@@ -1700,6 +1715,8 @@ snapshots:
   chai@6.3.0: {}
 
   convert-source-map@2.0.0: {}
+
+  css-what@8.0.0: {}
 
   dequal@2.0.3: {}
 

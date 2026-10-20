@@ -3,19 +3,21 @@ import type { AgentRow } from '../core/agents.ts'
 import { DEFAULT_PACK } from '../core/avatar/settings.ts'
 import { characterPose } from '../core/character.ts'
 import type { MotionMode } from '../core/character.ts'
-import { compose, halve, parsePackText } from '../core/pack/pack.ts'
+import { loadPack } from '../core/pack/load.ts'
+import { compose, halve } from '../core/pack/pack.ts'
 import type { Pack, PartSelection } from '../core/pack/pack.ts'
-import { builtinPackTexts } from '../packs.generated.ts'
+import type { Rule } from '../core/pack/rules.ts'
+import { builtinPacks } from '../packs.generated.ts'
 import type { CharacterSize } from './layout.ts'
 import { cellsBase64, halfBlockCells } from './raster.ts'
 
 /** A built-in pack. The tests parse each one, so a failure here is a bug in the repository. */
-export function builtinPack(name: string): Pack {
-  const text = builtinPackTexts[name]
-  if (text === undefined) throw new Error(`no built-in pack ${name}`)
-  const result = parsePackText(text)
+export function builtinPack(name: string): { pack: Pack; rules: readonly Rule[] } {
+  const source = builtinPacks[name]
+  if (source === undefined) throw new Error(`no built-in pack ${name}`)
+  const result = loadPack(source)
   if (!result.ok) throw new Error(`built-in pack ${name}: ${result.errors.map(e => `${e.path} ${e.message}`).join('; ')}`)
-  return result.pack
+  return { pack: result.pack, rules: result.rules }
 }
 
 export type RasterImage = { columns: number; rows: number; cells: string }
@@ -42,10 +44,10 @@ function packId(pack: Pack): number {
 }
 
 /** The built-in default pack, parsed once. */
-let defaultPack: Pack | undefined
-export function fallbackPack(): { name: string; pack: Pack } {
+let defaultPack: { pack: Pack; rules: readonly Rule[] } | undefined
+export function fallbackPack(): { name: string; pack: Pack; rules: readonly Rule[] } {
   defaultPack ??= builtinPack(DEFAULT_PACK)
-  return { name: DEFAULT_PACK, pack: defaultPack }
+  return { name: DEFAULT_PACK, ...defaultPack }
 }
 
 /** The character of an agent in an outfit at `now`, full size or half size. */
