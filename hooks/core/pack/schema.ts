@@ -8,6 +8,12 @@ export const MAX_GRID = 32
 export const MAX_COLORS = 64
 /** The largest `pack.json` and `pack.css` together, in bytes. A pack is untrusted input. */
 export const MAX_PACK_BYTES = 1024 * 1024
+/**
+ * The largest `pack.css`, in characters. The CSS parser's time grows with the
+ * square of the text (1 MiB takes over 10 s), and the pane parses each user
+ * pack; 64 KiB parses in about 50 ms.
+ */
+export const MAX_CSS_CHARS = 64 * 1024
 /** The most ticks that one frame holds. */
 export const MAX_REPEAT = 64
 /** The highest frame rate of a motion. */

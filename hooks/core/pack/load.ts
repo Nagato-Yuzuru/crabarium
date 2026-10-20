@@ -4,7 +4,7 @@ import { parsePackText } from './pack.ts'
 import type { Pack, SchemaError } from './pack.ts'
 import { checkRules, parseRules, ruleErrorOf } from './rules.ts'
 import type { Rule } from './rules.ts'
-import { MAX_PACK_BYTES } from './schema.ts'
+import { MAX_CSS_CHARS, MAX_PACK_BYTES } from './schema.ts'
 
 /** The texts of a pack's files. */
 export type PackSource = { json: string; css?: string }
@@ -20,6 +20,9 @@ export function loadPack(source: PackSource): LoadResult {
       ok: false,
       errors: [{ path: '(files)', message: `pack.json and pack.css have ${size} characters; the limit is ${MAX_PACK_BYTES}` }],
     }
+  }
+  if ((source.css?.length ?? 0) > MAX_CSS_CHARS) {
+    return { ok: false, errors: [{ path: 'pack.css', message: `has ${source.css?.length} characters; the limit is ${MAX_CSS_CHARS}` }] }
   }
   const result = parsePackText(source.json)
   const css = source.css === undefined ? { rules: [], errors: [] } : parseRules(source.css)

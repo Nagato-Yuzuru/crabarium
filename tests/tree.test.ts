@@ -98,4 +98,30 @@ describe('compose on the part tree', () => {
     expect(draw({ body: { swap: { hat: 'glow' } } })[0]).toBe(G)
     expect(draw({ body: { swap: { hat: 'glow' } }, parts: { hat: { swap: 'base' } } })[0]).toBe(B)
   })
+
+  test('under two covers, the outermost one places the anchors: a hidden cover places nothing', () => {
+    const result = parsePack({
+      formatVersion: 1,
+      name: 'nested',
+      author: 'test',
+      license: 'MIT',
+      grid: { width: 4, height: 4 },
+      palette: { r: '#ff0000', b: '#0000ff' },
+      anchors: { shoulder: [0, 0] },
+      figure: { variants: { turn: { rows: ['r'], anchors: { tip: [3, 3] }, covers: true } } },
+      groups: {
+        arm: {
+          at: [0, 0],
+          anchors: { wrist: [0, 1] },
+          rows: ['r'],
+          variants: { curl: { rows: ['r'], anchors: { tip: [0, 0] }, covers: true } },
+        },
+        hand: { anchor: 'wrist', pivot: [0, 0], anchors: { tip: [0, 1] }, rows: ['r'] },
+      },
+      parts: { held: { ball: { anchor: 'tip', pivot: [0, 0], rows: ['b'] } } },
+    })
+    if (!result.ok) throw new Error(JSON.stringify(result.errors))
+    const drawn = compose(result.pack, { held: 'ball' }, { body: { swap: { figure: 'turn', arm: 'curl' } } }).pixels
+    expect(drawn.indexOf(B)).toBe(3 * 4 + 3)
+  })
 })

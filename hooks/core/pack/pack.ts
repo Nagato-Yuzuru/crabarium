@@ -172,11 +172,25 @@ export function isChannelValue(pack: Pack, channel: string, value: string): bool
   return own(variantsOf(pack, channel), value) !== undefined
 }
 
-/** Whether `channel` at `value` is a drawing that covers one of `nodes`. */
-export function coversAny(pack: Pack, channel: string, value: string, nodes: ReadonlySet<string>): boolean {
-  if (nodes.size === 0 || !covers(own(variantsOf(pack, channel), value))) return false
+/** The tree node of a channel: a group or the root is itself; a slot is the node that holds its part's anchor. */
+function nodeOf(pack: Pack, tree: Tree, channel: string, parts: PartSelection): string | undefined {
+  if (!Object.hasOwn(pack.parts ?? {}, channel)) return channel
+  const name = own(parts, channel)
+  const part = name === undefined ? undefined : partOf(pack, channel, name)
+  return part === undefined ? undefined : tree.owner.get(part.anchor)
+}
+
+/** Whether a node is `channel` or under it; for a slot, whether its part hangs on `channel` or under it. */
+export function isUnder(pack: Pack, node: string, channel: string, parts: PartSelection): boolean {
   const tree = treeOf(pack)
-  return [...nodes].some(node => node !== channel && lineage(tree, node).includes(channel))
+  const at = nodeOf(pack, tree, node, parts)
+  return at !== undefined && lineage(tree, at).includes(channel)
+}
+
+/** Whether `channel` at `value` is a drawing that covers one of `locked` (groups or slots). */
+export function coversAny(pack: Pack, channel: string, value: string, locked: ReadonlySet<string>, parts: PartSelection): boolean {
+  if (locked.size === 0 || !covers(own(variantsOf(pack, channel), value))) return false
+  return [...locked].some(node => node !== channel && isUnder(pack, node, channel, parts))
 }
 
 /** The channels of a pack: the root, each group, and each part slot. */
@@ -278,8 +292,16 @@ function checkRelations(pack: Pack): SchemaError[] {
         errors.push({ path: `${path}.anchor`, message: `${JSON.stringify(part.anchor)} is not an anchor` })
       }
       checkRows(part.rows, palette, path, errors)
-      for (const [variant, drawn] of Object.entries(part.variants ?? {}))
+      for (const [variant, drawn] of Object.entries(part.variants ?? {})) {
         checkRows(variantRows(drawn), palette, `${path}.variants.${variant}`, errors)
+        // A part is a leaf: nothing hangs on it, so it has no anchors to place and nothing to cover.
+        if (!isRows(drawn) && (drawn.anchors !== undefined || drawn.covers !== undefined)) {
+          errors.push({
+            path: `${path}.variants.${variant}`,
+            message: 'a part variant is rows only: a part has no anchors and covers nothing',
+          })
+        }
+      }
       part.motion?.frames.forEach((frame, i) => {
         const at = `${path}.motion.frames[${i}]`
         if (frame.swap !== undefined && frame.swap !== BASE && !Object.hasOwn(part.variants ?? {}, frame.swap)) {
@@ -425,10 +447,11 @@ export function compose(pack: Pack, selection: PartSelection = pack.defaults?.pa
     return value === undefined || value === BASE ? undefined : own(variantsOf(pack, node), value)
   }
   // The nearest node above `node` whose drawing covers it.
+  // The outermost node above `node` whose drawing covers it: a cover under another cover is not drawn either.
   const coverOf = (node: string): string | undefined =>
     lineage(tree, node)
       .slice(1)
-      .find(n => covers(variantOf(n)))
+      .findLast(n => covers(variantOf(n)))
   const origins = new Map<string, Point | null>()
   const anchorPoint = (name: string): Point | null => {
     const holder = tree.owner.get(name)

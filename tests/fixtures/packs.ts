@@ -470,4 +470,12 @@ export const packFixtures: readonly PackFixture[] = [
     schemaValid: true,
     packValid: true,
   },
+  {
+    name: 'a part variant with anchors or covers (a part is a leaf)',
+    json: edit(p => {
+      p.parts.hat.dot.variants = { up: { rows: ['c'], anchors: { head: [0, 0] }, covers: true } }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
 ]

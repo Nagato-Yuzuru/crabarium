@@ -2,7 +2,7 @@
 // the frame of each motion. Pure: the time comes in as an argument.
 import type { AgentRow } from './agents.ts'
 import { isEnded } from './agents.ts'
-import { coversAny, partOf } from './pack/pack.ts'
+import { coversAny, isUnder, partOf } from './pack/pack.ts'
 import type { CharacterState, Frame, Motion, Pack, PartFrame, PartSelection, Pose, Role } from './pack/pack.ts'
 import type { Rule } from './pack/rules.ts'
 import { motionNamed, styleOf } from './pack/style.ts'
@@ -51,6 +51,31 @@ export function characterState(row: AgentRow, now: number): { state: CharacterSt
   return { state, since: Number.isFinite(row.statusAt) ? row.statusAt : row.startedAt }
 }
 
+// The tick at which each frame ends, made once for each motion: a frame count has no limit.
+const endsOf = new WeakMap<Motion<{ repeat?: number }>, readonly number[]>()
+
+function frameEnds(motion: Motion<{ repeat?: number }>): readonly number[] {
+  let ends = endsOf.get(motion)
+  if (ends === undefined) {
+    const list: number[] = []
+    for (const frame of motion.frames) list.push((list.at(-1) ?? 0) + (frame.repeat ?? 1))
+    ends = list
+    endsOf.set(motion, ends)
+  }
+  return ends
+}
+
+// The index of the first value above `tick`, by binary search over sorted values.
+function firstAbove(values: readonly number[], tick: number): number {
+  let [low, high] = [0, values.length - 1]
+  while (low < high) {
+    const mid = (low + high) >> 1
+    if (values[mid]! > tick) high = mid
+    else low = mid + 1
+  }
+  return low
+}
+
 /** A frame index, and the elapsed time of the next frame change; `null` when no later time changes it. */
 export type FrameAt = { index: number; nextAt: number | null }
 
@@ -62,14 +87,12 @@ export function frameAt(motion: Motion<{ repeat?: number }>, elapsedMs: number, 
   const last = motion.frames.length - 1
   // Reduced motion keeps the pose that tells the state: the end of a one-shot motion, the start of a loop.
   if (mode === 'reduced') return { index: motion.loop ? 0 : last, nextAt: null }
-  // The tick at which each frame ends.
-  const ends: number[] = []
-  for (const frame of motion.frames) ends.push((ends.at(-1) ?? 0) + (frame.repeat ?? 1))
+  const ends = frameEnds(motion)
   const total = ends.at(-1) ?? 1
   const step = Math.floor((Math.max(0, elapsedMs) * motion.fps) / 1000)
   if (!motion.loop && step >= total - (motion.frames[last]?.repeat ?? 1)) return { index: last, nextAt: null }
   const cycle = motion.loop ? Math.floor(step / total) * total : 0
-  const index = ends.findIndex(end => step - cycle < end)
+  const index = firstAbove(ends, step - cycle)
   // The first whole millisecond of the tick at which the next frame starts; a loop of one frame never changes.
   const nextTick = cycle + ends[index]!
   return { index, nextAt: motion.loop && last === 0 ? null : Math.ceil((nextTick * 1000) / motion.fps) }
@@ -89,13 +112,15 @@ export type CharacterPose = { key: string; pose: Pose; nextAt: number | null }
  * The frame on the base pose: the frame's swaps win, except on a locked
  * channel, or where a covering drawing would hide a locked node.
  */
-export function onPose(pack: Pack, style: Style, frame: Frame | undefined): Frame {
+export function onPose(pack: Pack, style: Style, frame: Frame | undefined, parts: PartSelection): Frame {
   const swap: Record<string, string> = { ...style.pose }
   for (const [channel, value] of Object.entries(frame?.swap ?? {})) {
-    if (style.locks.has(channel) || coversAny(pack, channel, value, style.locks)) continue
+    if (style.locks.has(channel) || coversAny(pack, channel, value, style.locks, parts)) continue
     swap[channel] = value
   }
-  return { ...frame, swap }
+  // A frame cannot hide a locked node either, nor a node that a locked node is on.
+  const hide = frame?.hide?.filter(target => ![...style.locks].some(locked => isUnder(pack, locked, target, parts)))
+  return { ...frame, swap, ...(hide === undefined ? {} : { hide }) }
 }
 
 // Whether two styles draw the same track 0: the same loop on the same base pose.
@@ -116,8 +141,12 @@ export function characterPose(look: Look, row: AgentRow, now: number, mode: Moti
   const style = styleOf(pack, rules, { role, state, parts })
   // The role and the state choose the style; the rest of the look is the caller's key.
   const keys = [`${role ?? '-'}:${state}`]
-  if (mode === 'off') return { key: keys[0]!, pose: { body: onPose(pack, style, undefined) }, nextAt: null }
   const changes: number[] = []
+  // The entrance ends at a fixed time. Only a different working style changes the pose then.
+  if (state === 'entering' && !sameLoop(style, styleOf(pack, rules, { role, state: 'working', parts }))) {
+    changes.push(row.startedAt + ENTER_MS)
+  }
+  if (mode === 'off') return { key: keys[0]!, pose: { body: onPose(pack, style, undefined, parts) }, nextAt: changes[0] ?? null }
   const pose: { body?: Pose['body']; parts?: Record<string, PartFrame> } = {}
 
   const body = style.play === null ? null : motionNamed(pack, style.play)
@@ -128,19 +157,17 @@ export function characterPose(look: Look, row: AgentRow, now: number, mode: Moti
     keys.push(String(index))
     if (nextAt !== null) changes.push(since + nextAt)
   }
-  pose.body = onPose(pack, style, frame)
+  pose.body = onPose(pack, style, frame, parts)
   // A part motion is the part's own: it runs from the spawn, whatever the state.
   for (const [slot, name] of Object.entries(parts)) {
     const motion = partOf(pack, slot, name)?.motion
     if (motion === undefined) continue
     const { index, nextAt } = frameAt(motion, now - row.startedAt, mode)
-    pose.parts = { ...pose.parts, [slot]: motion.frames[index]! }
+    const partFrame = motion.frames[index]!
+    // A locked slot keeps its value: the part's own motion moves it, but does not swap it.
+    pose.parts = { ...pose.parts, [slot]: style.locks.has(slot) ? { ...partFrame, swap: undefined } : partFrame }
     keys.push(`${slot}:${index}`)
     if (nextAt !== null) changes.push(row.startedAt + nextAt)
-  }
-  // The entrance ends at a fixed time. Only a different working style changes the pose then.
-  if (state === 'entering' && !sameLoop(style, styleOf(pack, rules, { role, state: 'working', parts }))) {
-    changes.push(row.startedAt + ENTER_MS)
   }
   return { key: keys.join('|'), pose, nextAt: changes.length > 0 ? Math.min(...changes) : null }
 }

@@ -21,7 +21,7 @@ export type Figure = { label: string; parts: PartSelection; pose: Pose }
 
 // A role's base pose when it stands still: its idle style with no motion.
 function stillPose(pack: Pack, rules: readonly Rule[], role: Role | null, parts: PartSelection): Pose {
-  return { body: onPose(pack, styleOf(pack, rules, { role, state: 'idle', parts }), undefined) }
+  return { body: onPose(pack, styleOf(pack, rules, { role, state: 'idle', parts }), undefined, parts) }
 }
 
 /** The pack defaults, then each outfit of each role, standing still in the role's base pose. */
@@ -50,7 +50,7 @@ export function stateFigures(pack: Pack, rules: readonly Rule[] = []): { state: 
     return {
       state,
       motion: style.play ?? 'still',
-      figures: frames.map((frame, i) => ({ label: `${i + 1}`, parts, pose: { body: onPose(pack, style, frame) } })),
+      figures: frames.map((frame, i) => ({ label: `${i + 1}`, parts, pose: { body: onPose(pack, style, frame, parts) } })),
     }
   })
 }

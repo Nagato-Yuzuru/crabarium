@@ -24,10 +24,11 @@ export type Style = {
 
 const NO_PLACE = { line: 0, column: 0 }
 
-function shorthand(states: Readonly<Partial<Record<CharacterState, string>>>): Rule[] {
+// `[state=x] { play: m }` rules. The defaults go below :root (specificity -1), so `:root { play: m }` beats them.
+function shorthand(states: Readonly<Partial<Record<CharacterState, string>>>, specificity: number): Rule[] {
   return Object.entries(states).map(([state, play]) => ({
     selector: { attrs: { state }, event: null },
-    specificity: 1,
+    specificity,
     set: { pose: {}, lock: [], play },
     at: NO_PLACE,
     places: {},
@@ -53,7 +54,7 @@ function cascade(pack: Pack, rules: readonly Rule[]): readonly Rule[] {
   }
   let ordered = byRules.get(rules)
   if (ordered === undefined) {
-    const all = [...shorthand(DEFAULT_STATES), ...shorthand(pack.states ?? {}), ...rules]
+    const all = [...shorthand(DEFAULT_STATES, -1), ...shorthand(pack.states ?? {}, 1), ...rules]
     // toSorted is stable, so equal specificities keep their order and the later one wins.
     ordered = all.toSorted((a, b) => a.specificity - b.specificity)
     byRules.set(rules, ordered)
@@ -84,7 +85,7 @@ export function styleOf(pack: Pack, rules: readonly Rule[], tags: Tags): Style {
       if (value !== undefined) locked[channel] = value
     }
     if (set.play !== undefined) play = set.play
-    for (const [name, weight] of Object.entries(set.tricks ?? {})) tricks[name] = (tricks[name] ?? 0) + weight
+    for (const [name, weight] of Object.entries(set.tricks ?? {})) tricks[name] = (own(tricks, name) ?? 0) + weight
     if (set.idleEvery !== undefined) idleEvery = set.idleEvery
   }
   return { pose: { ...pose, ...locked }, locks, play, tricks, once, idleEvery }
