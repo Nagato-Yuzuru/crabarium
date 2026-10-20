@@ -8,9 +8,8 @@
 //   [held=hammer] { armR: hold; lock: armR; }
 //   [role=builder]:finished { once: jump; }
 import { AttributeAction, CssTypes, parse, parseSelector, SelectorType } from '../../vendor/css.js'
-import { own } from '../own.ts'
 import { BUILTIN_MOTIONS } from './motions.ts'
-import { partOf } from './pack.ts'
+import { BASE, isChannel, isChannelValue, partOf } from './pack.ts'
 import type { Pack, SchemaError } from './pack.ts'
 import { CHARACTER_STATES, MAX_WEIGHT, ROLES } from './schema.ts'
 
@@ -25,7 +24,7 @@ export type Place = { line: number; column: number }
 /** Motion names with weights, for a random pick. */
 export type Weighted = Readonly<Record<string, number>>
 
-/** What one rule sets. A channel is a body group; its value is `base` (the group's rows) or a variant. */
+/** What one rule sets. A channel is `figure`, a group, or a part slot; its value is `base` (the node's own rows) or a variant. */
 export type Declarations = {
   pose: Readonly<Record<string, string>>
   lock: readonly string[]
@@ -49,9 +48,6 @@ export type Rule = {
 }
 
 export type RuleError = Place & { message: string }
-
-/** The value of a channel that draws the group's own rows. */
-export const BASE = 'base'
 
 const NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,31}$/
 const DURATION = /^(\d{1,6}(?:\.\d{1,3})?)(ms|s)$/
@@ -249,8 +245,8 @@ export function checkRules(pack: Pack, rules: readonly Rule[]): readonly RuleErr
     }
   }
   const channel = (name: string, place: Place): boolean => {
-    if (Object.hasOwn(pack.groups, name)) return true
-    errors.push({ ...place, message: `${JSON.stringify(name)} is not a group, so it is not a channel` })
+    if (isChannel(pack, name)) return true
+    errors.push({ ...place, message: `${JSON.stringify(name)} is not figure, a group, or a part slot, so it is not a channel` })
     return false
   }
   for (const { selector, set, at, places } of rules) {
@@ -270,8 +266,8 @@ export function checkRules(pack: Pack, rules: readonly Rule[]): readonly RuleErr
     }
     for (const [name, value] of Object.entries(set.pose)) {
       const place = places[name] ?? at
-      if (channel(name, place) && value !== BASE && own(own(pack.groups, name)?.variants, value) === undefined) {
-        errors.push({ ...place, message: `${name}: ${JSON.stringify(value)} is not ${BASE} or a variant in groups.${name}.variants` })
+      if (channel(name, place) && !isChannelValue(pack, name, value)) {
+        errors.push({ ...place, message: `${name}: ${JSON.stringify(value)} is not ${BASE} or a variant of ${name}` })
       }
     }
     for (const name of set.lock) channel(name, places.lock ?? at)

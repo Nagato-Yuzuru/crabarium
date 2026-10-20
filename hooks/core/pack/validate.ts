@@ -146,6 +146,19 @@ class Validator {
           }
         }
         return
+      case 'anyOf': {
+        const branches = arg as Schema[]
+        if (branches.some(b => new Validator(this.root).check(value, b, path))) return
+        // The errors of the branch for this type of value name the real problem; with no such branch, say what fits.
+        const same = branches.find(b => typeof b.type === 'string' && hasType(value, b.type))
+        if (same !== undefined) this.check(value, same, path)
+        else
+          this.fail(
+            path,
+            `must be ${branches.map(b => (typeof b.type === 'string' ? b.type : 'another form')).join(' or ')}, not ${typeOf(value)}`,
+          )
+        return
+      }
       default:
         throw new Error(`schema: the validator has no rule for keyword ${keyword}`)
     }

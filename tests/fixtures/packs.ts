@@ -298,17 +298,25 @@ export const packFixtures: readonly PackFixture[] = [
     packValid: true,
   },
   {
-    name: 'a motion with 32 frames',
+    name: 'a motion with 200 frames (no count limit)',
     json: edit(p => {
-      p.motions = { long: { fps: 1, loop: true, frames: Array.from({ length: 32 }, () => ({})) } }
+      p.motions = { long: { fps: 1, loop: true, frames: Array.from({ length: 200 }, () => ({})) } }
     }),
     schemaValid: true,
     packValid: true,
   },
   {
-    name: 'a motion with 33 frames',
+    name: 'a frame that holds for 3 ticks',
     json: edit(p => {
-      p.motions = { long: { fps: 1, loop: true, frames: Array.from({ length: 33 }, () => ({})) } }
+      p.motions = { slow: { fps: 4, loop: true, frames: [{ repeat: 3 }, {}] } }
+    }),
+    schemaValid: true,
+    packValid: true,
+  },
+  {
+    name: 'a frame that holds for 0 ticks',
+    json: edit(p => {
+      p.motions = { slow: { fps: 4, loop: true, frames: [{ repeat: 0 }] } }
     }),
     schemaValid: false,
     packValid: false,
@@ -376,5 +384,90 @@ export const packFixtures: readonly PackFixture[] = [
     }),
     schemaValid: true,
     packValid: false,
+  },
+  {
+    name: 'a group on an anchor of another group',
+    json: edit(p => {
+      p.groups.body.anchors = { eye: [1, 0] }
+      p.groups.eyes = { anchor: 'eye', pivot: [0, 0], rows: ['b'] }
+    }),
+    schemaValid: true,
+    packValid: true,
+  },
+  {
+    name: 'a group with at and an anchor',
+    json: edit(p => {
+      p.groups.eyes = { at: [0, 0], anchor: 'head', pivot: [0, 0], rows: ['b'] }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
+    name: 'a group with neither at nor an anchor',
+    json: edit(p => {
+      p.groups.eyes = { rows: ['b'] }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
+    name: 'an anchor name on two nodes',
+    json: edit(p => {
+      p.groups.body.anchors = { head: [1, 0] }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
+    name: 'two groups on the anchors of each other',
+    json: edit(p => {
+      p.groups.a = { anchor: 'onB', pivot: [0, 0], anchors: { onA: [0, 0] }, rows: ['b'] }
+      p.groups.b = { anchor: 'onA', pivot: [0, 0], anchors: { onB: [0, 0] }, rows: ['b'] }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
+    name: 'a whole-figure variant that covers the groups and places their anchors',
+    json: edit(p => {
+      p.groups.body.anchors = { eye: [1, 0] }
+      p.figure = { variants: { turn: { rows: ['aa', 'aa'], anchors: { head: [0, 0], eye: [1, 1] }, covers: true } } }
+    }),
+    schemaValid: true,
+    packValid: true,
+  },
+  {
+    name: 'a variant with no covers that places an anchor of another node',
+    json: edit(p => {
+      p.groups.body.anchors = { eye: [1, 0] }
+      p.figure = { variants: { lean: { rows: ['a'], anchors: { eye: [0, 0] } } } }
+    }),
+    schemaValid: true,
+    packValid: false,
+  },
+  {
+    name: 'a group named figure',
+    json: edit(p => {
+      p.groups.figure = { at: [0, 0], rows: ['a'] }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'a variant named base',
+    json: edit(p => {
+      p.groups.body.variants = { base: ['aaaa'] }
+    }),
+    schemaValid: false,
+    packValid: false,
+  },
+  {
+    name: 'a swap of a part slot to a variant that one of its parts has',
+    json: edit(p => {
+      p.parts.hat.dot.variants = { glow: ['a'] }
+      p.motions = { shine: { fps: 2, loop: true, frames: [{ swap: { hat: 'glow' } }, { swap: { hat: 'base' } }] } }
+    }),
+    schemaValid: true,
+    packValid: true,
   },
 ]

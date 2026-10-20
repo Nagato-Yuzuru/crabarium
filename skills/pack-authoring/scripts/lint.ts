@@ -1,8 +1,8 @@
 // Art checks that the schema cannot make: is the character readable in a
 // terminal? Each finding names a figure, a field, or a pixel, so that the
 // author can fix it without a guess. Pure.
-import { compose, halve, TRANSPARENT } from '../../../hooks/core/pack/pack.ts'
-import type { Pack, PartSelection, PixelGrid, Pose } from '../../../hooks/core/pack/pack.ts'
+import { compose, halve, variantRows } from '../../../hooks/core/pack/pack.ts'
+import type { Pack, PartSelection, PixelGrid, Pose, Rows, Variants } from '../../../hooks/core/pack/pack.ts'
 import { ROLES } from '../../../hooks/core/pack/schema.ts'
 import { BACKGROUNDS, outfitFigures, stateFigures } from './sheet.ts'
 import type { Figure } from './sheet.ts'
@@ -60,20 +60,14 @@ function difference(a: PixelGrid, b: PixelGrid): number {
   return a.pixels.reduce<number>((n, color, i) => (color === b.pixels[i] ? n : n + 1), 0)
 }
 
-/** The pack with a margin of `m` pixels on each side, so that compose keeps what the real grid clips. */
-function padded(pack: Pack, m: number): Pack {
-  const shift = ([x, y]: readonly [number, number]) => [x + m, y + m] as const
-  return {
-    ...pack,
-    grid: { width: pack.grid.width + 2 * m, height: pack.grid.height + 2 * m },
-    groups: Object.fromEntries(Object.entries(pack.groups).map(([name, g]) => [name, { ...g, at: shift(g.at) }])),
-    anchors: Object.fromEntries(Object.entries(pack.anchors ?? {}).map(([name, p]) => [name, shift(p)])),
-  }
-}
-
 function clipped(pack: Pack, parts: PartSelection, pose: Pose): [number, number][] {
+  // A margin of m pixels on each side, so that compose keeps what the real grid clips: a bigger grid, and the whole figure moved in by m.
   const m = 32
-  const big = compose(padded(pack, m), parts, pose)
+  const [dx, dy] = pose.body?.offset?.['*'] ?? [0, 0]
+  const big = compose({ ...pack, grid: { width: pack.grid.width + 2 * m, height: pack.grid.height + 2 * m } }, parts, {
+    ...pose,
+    body: { ...pose.body, offset: { ...pose.body?.offset, '*': [dx + m, dy + m] } },
+  })
   const out: [number, number][] = []
   big.pixels.forEach((color, i) => {
     const x = (i % big.width) - m
@@ -136,19 +130,16 @@ function figureChecks(pack: Pack, figure: Figure, where: string): Finding[] {
 }
 
 function eyeChecks(pack: Pack, figure: Figure, where: string): Finding[] {
+  const eyes = Object.keys(pack.groups).filter(name => /eye/i.test(name))
+  if (eyes.length === 0) return []
+  // The eye pixels are where the figure changes when the eye groups are hidden; this finds them on any node of the tree.
   const bare = compose(pack, {}, figure.pose)
+  const blind = compose(pack, {}, { ...figure.pose, body: { ...figure.pose.body, hide: [...(figure.pose.body?.hide ?? []), ...eyes] } })
   const dressed = compose(pack, figure.parts, figure.pose)
   const covered: [number, number][] = []
-  for (const [name, group] of Object.entries(pack.groups)) {
-    if (!/eye/i.test(name)) continue
-    group.rows.forEach((row, dy) =>
-      [...row].forEach((key, dx) => {
-        const x = group.at[0] + dx
-        const y = group.at[1] + dy
-        if (key !== TRANSPARENT && at(bare, x, y) !== at(dressed, x, y)) covered.push([x, y])
-      }),
-    )
-  }
+  bare.pixels.forEach((color, i) => {
+    if (color !== blind.pixels[i] && color !== dressed.pixels[i]) covered.push([i % bare.width, Math.floor(i / bare.width)])
+  })
   if (covered.length === 0) return []
   const parts = Object.entries(figure.parts).map(([slot, name]) => `${slot}:${name}`)
   return [{ severity: 'error', rule: 'covers-eyes', where, message: `${parts.join(' ')} covers the eyes at ${points(covered)}` }]
@@ -212,15 +203,17 @@ function paletteChecks(pack: Pack): Finding[] {
   })
 
   const used = new Set<string>()
-  const use = (rows: readonly string[] | undefined) => rows?.forEach(row => [...row].forEach(key => used.add(key)))
+  const use = (rows: Rows) => rows.forEach(row => [...row].forEach(key => used.add(key)))
+  const useAll = (variants: Variants | undefined) => Object.values(variants ?? {}).forEach(v => use(variantRows(v)))
+  useAll(pack.figure?.variants)
   for (const group of Object.values(pack.groups)) {
     use(group.rows)
-    Object.values(group.variants ?? {}).forEach(use)
+    useAll(group.variants)
   }
   for (const parts of Object.values(pack.parts ?? {})) {
     for (const part of Object.values(parts)) {
       use(part.rows)
-      Object.values(part.variants ?? {}).forEach(use)
+      useAll(part.variants)
     }
   }
   const unused = Object.keys(pack.palette).filter(key => !used.has(key))

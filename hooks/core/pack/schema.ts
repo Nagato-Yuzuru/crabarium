@@ -6,8 +6,10 @@
 export const MAX_GRID = 32
 /** The largest number of different colors in one pack. */
 export const MAX_COLORS = 64
-/** The most frames in one motion. */
-export const MAX_FRAMES = 32
+/** The largest `pack.json` and `pack.css` together, in bytes. A pack is untrusted input. */
+export const MAX_PACK_BYTES = 1024 * 1024
+/** The most ticks that one frame holds. */
+export const MAX_REPEAT = 64
 /** The highest frame rate of a motion. */
 export const MAX_FPS = 30
 /** The character states that `states` can give a motion. */
@@ -21,11 +23,13 @@ export const ROLES = ['explorer', 'reviewer', 'builder', 'tester', 'planner', 'r
 /** The highest weight of an outfit. */
 export const MAX_WEIGHT = 100
 /**
- * The most entries in one map of a pack (groups, anchors, slots, parts of a
- * slot, variants, motions). A pack is untrusted input, and the work to draw a
- * frame grows with these counts.
+ * The most entries in each map whose count sets the work to draw one frame:
+ * groups, anchors, slots, and parts of a slot. Motions and variants have no
+ * count limit: a frame draws one of them, and MAX_PACK_BYTES bounds the file.
  */
 export const MAX_ENTRIES = 64
+/** The channel of the root node: the whole figure. No group can have this name. */
+export const FIGURE = 'figure'
 
 const coordinate = { type: 'integer', minimum: 0, maximum: MAX_GRID - 1 } as const
 const point = {
@@ -44,6 +48,13 @@ const move = {
   description: '[dx, dy] in whole pixels.',
 } as const
 const NAME = '[a-zA-Z][a-zA-Z0-9-]{0,31}'
+const rows = {
+  type: 'array',
+  description: 'Pixel rows, top first. Each character is a palette key or "." for transparent.',
+  minItems: 1,
+  maxItems: MAX_GRID,
+  items: { type: 'string', minLength: 1, maxLength: MAX_GRID },
+} as const
 const name = { type: 'string', pattern: `^${NAME}$` } as const
 const color = { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'A color as #rrggbb.' } as const
 
@@ -55,7 +66,7 @@ function motion(frame: '#/$defs/frame' | '#/$defs/partFrame') {
     properties: {
       fps: { type: 'integer', minimum: 1, maximum: MAX_FPS },
       loop: { type: 'boolean', description: 'true plays the frames again; false holds the last frame.' },
-      frames: { type: 'array', minItems: 1, maxItems: MAX_FRAMES, items: { $ref: frame } },
+      frames: { type: 'array', minItems: 1, items: { $ref: frame } },
     },
   } as const
 }
@@ -86,23 +97,38 @@ export const packSchema = {
     },
     palette: { $ref: '#/$defs/palette' },
     anchors: {
+      $ref: '#/$defs/anchors',
+      description:
+        'The anchors of the root (the whole figure): points on the grid where groups and parts attach, for example head. An anchor name is unique in the pack.',
+    },
+    figure: {
       type: 'object',
-      description: 'Named points where parts attach, for example head.',
-      maxProperties: MAX_ENTRIES,
-      propertyNames: name,
-      additionalProperties: point,
+      description: `The root node as a channel, "${FIGURE}". Its variants are whole-figure drawings; a variant with covers draws in place of the groups.`,
+      additionalProperties: false,
+      properties: { variants: { $ref: '#/$defs/variants' } },
     },
     groups: {
       type: 'object',
-      description: 'The body, in groups that a motion can move or hide. The groups are drawn in this order.',
+      description:
+        'The body, in groups that a motion can move, swap, or hide. A group is at a point of the grid, or on an anchor of another group, which is then its parent; moving or hiding a group moves or hides the groups on it. The groups are drawn in this order.',
       minProperties: 1,
       maxProperties: MAX_ENTRIES,
-      propertyNames: name,
+      propertyNames: { ...name, not: { const: FIGURE } },
       additionalProperties: {
         type: 'object',
-        required: ['at', 'rows'],
+        required: ['rows'],
         additionalProperties: false,
-        properties: { at: point, rows: { $ref: '#/$defs/rows' }, variants: { $ref: '#/$defs/variants' } },
+        properties: {
+          at: { ...point, description: 'Where the group is on the grid. A group has at, or anchor and pivot.' },
+          anchor: { ...name, description: 'The anchor of another group that the pivot goes to.' },
+          pivot: { ...point, description: 'The point of the group, from its top left, that goes on the anchor.' },
+          anchors: {
+            $ref: '#/$defs/anchors',
+            description: 'Anchors on this group, from its top left. An anchor name is unique in the pack.',
+          },
+          rows: { $ref: '#/$defs/rows' },
+          variants: { $ref: '#/$defs/variants' },
+        },
       },
     },
     parts: {
@@ -135,7 +161,6 @@ export const packSchema = {
     motions: {
       type: 'object',
       description: 'Motions by name. A motion with the name of a built-in motion (walk, bob, float, swing) replaces it.',
-      maxProperties: MAX_ENTRIES,
       propertyNames: name,
       additionalProperties: motion('#/$defs/frame'),
     },
@@ -198,19 +223,36 @@ export const packSchema = {
       additionalProperties: color,
       maxProperties: MAX_COLORS,
     },
-    rows: {
-      type: 'array',
-      description: 'Pixel rows, top first. Each character is a palette key or "." for transparent.',
-      minItems: 1,
-      maxItems: MAX_GRID,
-      items: { type: 'string', minLength: 1, maxLength: MAX_GRID },
+    rows,
+    anchors: {
+      type: 'object',
+      maxProperties: MAX_ENTRIES,
+      propertyNames: name,
+      additionalProperties: point,
     },
     variants: {
       type: 'object',
-      description: 'Other rows for the same place, by name. A frame `swap` draws one of them.',
-      maxProperties: MAX_ENTRIES,
-      propertyNames: name,
-      additionalProperties: { $ref: '#/$defs/rows' },
+      description: `Other drawings of the same node, by name; "base" is the node's own rows. A frame swap or a pack.css channel value selects one.`,
+      propertyNames: { ...name, not: { const: 'base' } },
+      additionalProperties: {
+        anyOf: [
+          rows,
+          {
+            type: 'object',
+            required: ['rows'],
+            additionalProperties: false,
+            properties: {
+              rows,
+              anchors: {
+                $ref: '#/$defs/anchors',
+                description:
+                  'Where the anchors of the node are in this drawing, from its top left. With covers, it can also place the anchors of the groups that it covers.',
+              },
+              covers: { type: 'boolean', description: 'true: the drawing includes the groups on this node, so they are not drawn.' },
+            },
+          },
+        ],
+      },
     },
     frame: {
       type: 'object',
@@ -225,12 +267,13 @@ export const packSchema = {
         },
         swap: {
           type: 'object',
-          description: 'Draws a group with one of its variants.',
+          description: `Draws a group, a part slot, or "${FIGURE}" with one of its variants, or "base".`,
           propertyNames: name,
           additionalProperties: name,
         },
         hide: { type: 'array', description: 'Groups and slots that this frame does not draw.', items: name },
         palette: { $ref: '#/$defs/palette', description: 'Colors that replace palette colors for this frame, in each palette.' },
+        repeat: { type: 'integer', minimum: 1, maximum: MAX_REPEAT, description: 'How many ticks this frame holds. The default is 1.' },
       },
     },
     partFrame: {
@@ -242,6 +285,7 @@ export const packSchema = {
         swap: { ...name, description: 'Draws the part with one of its variants.' },
         hide: { type: 'boolean' },
         palette: { $ref: '#/$defs/palette', description: 'Colors that replace palette colors for this frame.' },
+        repeat: { type: 'integer', minimum: 1, maximum: MAX_REPEAT, description: 'How many ticks this frame holds. The default is 1.' },
       },
     },
   },
