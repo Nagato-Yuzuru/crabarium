@@ -20,6 +20,10 @@ function errorsOf(css: string): string[] {
   return [...errors, ...checkRules(pack, rules)].map(e => `${e.line}:${e.column} ${e.message}`)
 }
 
+function messages(css: string): string[] {
+  return parseRules(css).errors.map(e => `${e.line}:${e.column} ${e.message}`)
+}
+
 describe('parseRules', () => {
   test('reads selectors, specificity, and each property', () => {
     const { rules, errors } = parseRules(`
@@ -65,6 +69,29 @@ describe('parseRules', () => {
       expect(errors.map(e => `${e.line}:${e.column} ${e.message}`).join('\n')).toContain(error)
       expect(rules.length).toBe(0)
     }
+  })
+
+  test('a nested rule adds its conditions to the parent, comes after it, and keeps its own line', () => {
+    const { rules, errors } = parseRules(`[held=hammer] {
+  body: squash;
+  &[state=working] { play: walk; }
+  &:finished { once: hop; }
+}`)
+    expect(errors).toEqual([])
+    expect(rules.map(r => [r.selector, r.specificity, r.at.line])).toEqual([
+      [{ attrs: { held: 'hammer' }, event: null }, 1, 1],
+      [{ attrs: { held: 'hammer', state: 'working' }, event: null }, 2, 3],
+      [{ attrs: { held: 'hammer' }, event: 'finished' }, 2, 4],
+    ])
+  })
+
+  test('a nested selector is & and then conditions; a descendant or a repeated key is an error', () => {
+    expect(messages('[held=hammer] {\n  & [state=idle] { play: bob; }\n}')[0]).toContain(
+      '2:3 "& [state=idle]": a nested selector is & and then conditions',
+    )
+    expect(messages('[held=hammer] { [state=idle] { play: bob; } }')[0]).toContain('a nested selector is &')
+    expect(messages('[state=idle] { &[state=working] { play: bob; } }')[0]).toContain('names state again under a rule that names it')
+    expect(messages(':finished { &:failed { once: hop; } }')[0]).toContain('waits for a second event')
   })
 
   test('a syntax error comes from the parser, with its line and column', () => {
