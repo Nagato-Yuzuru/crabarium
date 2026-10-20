@@ -42,7 +42,7 @@ export type Choice = { source: Source; role: Role | null; parts: PartSelection }
 
 const PART_NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,31}$/
 
-function isRole(text: string): text is Role {
+export function isRole(text: string): text is Role {
   return (ROLES as readonly string[]).includes(text)
 }
 
