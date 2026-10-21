@@ -15,6 +15,23 @@
       "matchPackageNames": ["!@anthropic-ai/claude-code"],
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "groupName": "development tools"
+    },
+    {
+      "description": "Merge low-risk updates when the required CI check passes.",
+      "matchUpdateTypes": ["patch", "digest", "pin", "lockFileMaintenance"],
+      "automerge": true
+    },
+    {
+      "description": "Actions are pinned by digest, so a green run is enough for minor releases.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": true
+    },
+    {
+      "description": "CI tests the plugin against the new engine, so a green run is enough for minor releases.",
+      "matchPackageNames": ["@anthropic-ai/claude-code"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": true
     }
   ]
 }
