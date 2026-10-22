@@ -3,7 +3,8 @@
 // packages (hooks/vendor/css.js), and this file accepts only the subset below.
 // Pure: the text comes in as an argument.
 //
-//   :root { eyes: base; tricks: jump 1, look 2; idle-every: 8s 20s; }
+//   :root { eyes: base; }
+//   [state=idle] { tricks: jump 1, look 2; trick-every: 8s 20s; }
 //   [state=working] { play: walk; }
 //   [held=hammer] { armR: hold; lock: armR; }
 //   [role=builder]:finished { once: jump; }
@@ -31,7 +32,7 @@ export type Declarations = {
   play?: string
   tricks?: Weighted
   once?: Weighted
-  idleEvery?: readonly [minMs: number, maxMs: number]
+  trickEvery?: readonly [minMs: number, maxMs: number]
 }
 
 /** `[key=value]` conditions, all of which must hold, and an optional event. `:root` has neither. */
@@ -119,7 +120,7 @@ function parseDuration(text: string): number | null {
   return Math.round(Number(match[1]) * (match[2] === 's' ? 1000 : 1))
 }
 
-function parseIdleEvery(value: string): Parsed<readonly [number, number]> {
+function parseTrickEvery(value: string): Parsed<readonly [number, number]> {
   const parts = value.split(/\s+/).filter(p => p !== '')
   const [min, max = min] = parts.map(parseDuration)
   if (parts.length > 2 || min === undefined || min === null || max === undefined || max === null) {
@@ -135,7 +136,7 @@ type Mutable = {
   play?: string
   tricks?: Weighted
   once?: Weighted
-  idleEvery?: readonly [number, number]
+  trickEvery?: readonly [number, number]
 }
 
 function declare(set: Mutable, property: string, value: string, event: Event | null): string | null {
@@ -166,10 +167,10 @@ function declare(set: Mutable, property: string, value: string, event: Event | n
       set.lock = [...parsed.value]
       return null
     }
-    case 'idle-every': {
-      const parsed = parseIdleEvery(value)
-      if (!parsed.ok) return `idle-every ${parsed.message}`
-      set.idleEvery = parsed.value
+    case 'trick-every': {
+      const parsed = parseTrickEvery(value)
+      if (!parsed.ok) return `trick-every ${parsed.message}`
+      set.trickEvery = parsed.value
       return null
     }
     default: {

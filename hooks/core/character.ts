@@ -2,9 +2,10 @@
 // the frame of each motion. Pure: the time comes in as an argument.
 import type { AgentRow } from './agents.ts'
 import { isEnded } from './agents.ts'
+import { own } from './own.ts'
 import { coversAny, isUnder, partOf } from './pack/pack.ts'
-import type { CharacterState, Frame, Motion, Pack, PartFrame, PartSelection, Pose, Role } from './pack/pack.ts'
-import type { Rule } from './pack/rules.ts'
+import type { CharacterState, Frame, Motion, Move, Pack, PartFrame, PartSelection, Pose, Role } from './pack/pack.ts'
+import type { Rule, Weighted } from './pack/rules.ts'
 import { motionNamed, styleOf } from './pack/style.ts'
 import type { Style } from './pack/style.ts'
 
@@ -108,31 +109,164 @@ export type Look = { pack: Pack; rules: readonly Rule[]; role: Role | null; part
  */
 export type CharacterPose = { key: string; pose: Pose; nextAt: number | null }
 
-/**
- * The frame on the base pose: the frame's swaps win, except on a locked
- * channel, or where a covering drawing would hide a locked node.
- */
-export function onPose(pack: Pack, style: Style, frame: Frame | undefined, parts: PartSelection): Frame {
-  const swap: Record<string, string> = { ...style.pose }
-  for (const [channel, value] of Object.entries(frame?.swap ?? {})) {
-    if (style.locks.has(channel) || coversAny(pack, channel, value, style.locks, parts)) continue
-    swap[channel] = value
+// What the locks of a style keep a frame from: a swap of a locked channel, a
+// covering variant over a locked node, and a hide of a locked node or of a node
+// that a locked node is on.
+function lockGuard(pack: Pack, style: Style, parts: PartSelection) {
+  const locks = [...style.locks]
+  return {
+    swap: (channel: string, value: string) => !style.locks.has(channel) && !coversAny(pack, channel, value, style.locks, parts),
+    hide: (target: string) => !locks.some(locked => locked === target || isUnder(pack, locked, target, parts)),
   }
-  // A frame cannot hide a locked node either, nor a node that a locked node is on.
-  const hide = frame?.hide?.filter(target => ![...style.locks].some(locked => isUnder(pack, locked, target, parts)))
+}
+
+/** The frame on the base pose: the frame's swaps and hides apply, except where a lock keeps them from it. */
+export function onPose(pack: Pack, style: Style, frame: Frame | undefined, parts: PartSelection): Frame {
+  const guard = lockGuard(pack, style, parts)
+  const swap: Record<string, string> = { ...style.pose }
+  for (const [channel, value] of Object.entries(frame?.swap ?? {})) if (guard.swap(channel, value)) swap[channel] = value
+  const hide = frame?.hide?.filter(guard.hide)
   return { ...frame, swap, ...(hide === undefined ? {} : { hide }) }
 }
 
-// Whether two styles draw the same track 0: the same loop on the same base pose.
-function sameLoop(a: Style, b: Style): boolean {
-  const keys = Object.keys(a.pose)
-  return (
-    a.play === b.play &&
-    keys.length === Object.keys(b.pose).length &&
-    keys.every(k => a.pose[k] === b.pose[k]) &&
-    a.locks.size === b.locks.size &&
-    [...a.locks].every(l => b.locks.has(l))
-  )
+const sameRecord = (a: Readonly<Record<string, unknown>>, b: Readonly<Record<string, unknown>>) =>
+  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, v]) => Object.hasOwn(b, k) && b[k] === v)
+
+// Whether two styles draw the same in a mode: the same loop on the same base pose, and in full motion the same tricks.
+function sameStyle(a: Style, b: Style, mode: MotionMode): boolean {
+  const same = a.play === b.play && sameRecord(a.pose, b.pose) && a.locks.size === b.locks.size && [...a.locks].every(l => b.locks.has(l))
+  if (!same || mode !== 'full') return same
+  return sameRecord(a.tricks, b.tricks) && a.trickEvery?.[0] === b.trickEvery?.[0] && a.trickEvery?.[1] === b.trickEvery?.[1]
+}
+
+/** The distinct swaps and hides of a motion: what a lock can keep it from. */
+type Touches = { swaps: readonly (readonly [channel: string, value: string])[]; hides: readonly string[] }
+
+// Made once for each motion, so the cost of a lock check does not grow with the frame count.
+const touchesOf = new WeakMap<Motion, Touches>()
+
+function touches(motion: Motion): Touches {
+  let found = touchesOf.get(motion)
+  if (found === undefined) {
+    const swaps = new Map<string, readonly [string, string]>()
+    const hides = new Set<string>()
+    for (const frame of motion.frames) {
+      for (const [channel, value] of Object.entries(frame.swap ?? {})) swaps.set(`${channel}\0${value}`, [channel, value])
+      for (const target of frame.hide ?? []) hides.add(target)
+    }
+    found = { swaps: [...swaps.values()], hides: [...hides] }
+    touchesOf.set(motion, found)
+  }
+  return found
+}
+
+// FNV-1a, then the murmur3 finalizer, so each bit of the result depends on each input character.
+function hash(text: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193)
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b)
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35)
+  return (h ^ (h >>> 16)) >>> 0
+}
+
+export type Choice = { name: string; motion: Motion; weight: number }
+
+/** The motions of a weighted list that can play on the style: each exists, and no lock keeps it from a frame. */
+export function usable(pack: Pack, style: Style, weights: Weighted, parts: PartSelection): Choice[] {
+  const guard = lockGuard(pack, style, parts)
+  return Object.entries(weights).flatMap(([name, weight]) => {
+    const motion = motionNamed(pack, name)
+    if (motion === null) return []
+    const { swaps, hides } = touches(motion)
+    return swaps.every(([channel, value]) => guard.swap(channel, value)) && hides.every(guard.hide) ? [{ name, motion, weight }] : []
+  })
+}
+
+// A choice by weight; the same seed gives the same choice.
+function pick(pool: readonly Choice[], seed: string): Choice | null {
+  const total = pool.reduce((sum, choice) => sum + choice.weight, 0)
+  if (total === 0) return null
+  let rest = hash(seed) % total
+  for (const choice of pool) {
+    if (rest < choice.weight) return choice
+    rest -= choice.weight
+  }
+  return null
+}
+
+/** How long a motion plays once through, in whole milliseconds. */
+function lengthMs(motion: Motion<{ repeat?: number }>): number {
+  return Math.ceil(((frameEnds(motion).at(-1) ?? 1) * 1000) / motion.fps)
+}
+
+/** A track 1 motion: a `once` motion of an event, or a trick. */
+type Shot = { name: string; motion: Motion; startsAt: number }
+
+/**
+ * The track 1 motion at `now`, or `null`, and the times at which track 1 can
+ * change. `begun` is when the state began. An event that the state starts
+ * (`finished`, `failed`) plays its `once` motion from then. After it, trick k
+ * starts at `base + min + phase + floor(k * mid) + jitter(k)`: `mid` is the
+ * middle of the two `trick-every` times, the jitter is from 0 to half their
+ * difference, and the phase (from 0 to `mid`) is the agent's own. So two
+ * tricks are from `min` to `max` apart, the first is from `min` to
+ * `min + max` after the base, two agents do not trick in step, and the trick
+ * at a time is known with no history.
+ */
+function trackOne(
+  look: Look,
+  row: AgentRow,
+  style: Style,
+  state: CharacterState,
+  begun: number,
+  now: number,
+): { shot: Shot | null; changes: number[] } {
+  const { pack, parts } = look
+  let base = begun
+  const event = state === 'finished' || state === 'failed' ? style.once[state] : undefined
+  if (event !== undefined) {
+    const chosen = pick(usable(pack, style, event, parts), `${row.id}:${state}`)
+    if (chosen !== null) {
+      base = begun + lengthMs(chosen.motion)
+      if (now < base) return { shot: { name: chosen.name, motion: chosen.motion, startsAt: begun }, changes: [base] }
+    }
+  }
+  if (style.trickEvery === null) return { shot: null, changes: [] }
+  const pool = usable(pack, style, style.tricks, parts)
+  if (pool.length === 0) return { shot: null, changes: [] }
+  const [min, max] = style.trickEvery
+  const mid = (min + max) / 2
+  const first = base + min + (hash(`${row.id}:${base}`) % Math.floor(mid))
+  const jitter = Math.floor((max - min) / 2) + 1
+  const startOf = (k: number) => first + Math.floor(k * mid) + (hash(`${row.id}:${base}:${k}`) % jitter)
+  // An estimate, then one step: a jitter is less than one `mid`.
+  let k = Math.max(-1, Math.floor((now - first) / mid))
+  if (startOf(k + 1) <= now) k += 1
+  else if (k >= 0 && startOf(k) > now) k -= 1
+  const changes = [startOf(k + 1)]
+  if (k < 0) return { shot: null, changes }
+  const startsAt = startOf(k)
+  const chosen = pick(pool, `${row.id}:${base}:${k}:trick`)
+  if (chosen === null || now >= startsAt + lengthMs(chosen.motion)) return { shot: null, changes }
+  changes.push(startsAt + lengthMs(chosen.motion))
+  return { shot: { name: chosen.name, motion: chosen.motion, startsAt }, changes }
+}
+
+// Track 1 over track 0, per channel: its swaps and palette win, offsets add, and hides join.
+function layered(below: Frame | undefined, above: Frame | undefined): Frame | undefined {
+  if (below === undefined || above === undefined) return above ?? below
+  const offset: Record<string, Move> = { ...below.offset }
+  for (const [node, [dx, dy]] of Object.entries(above.offset ?? {})) {
+    const [x, y] = own(offset, node) ?? [0, 0]
+    offset[node] = [x + dx, y + dy]
+  }
+  const hide = [...new Set([...(below.hide ?? []), ...(above.hide ?? [])])]
+  return {
+    offset,
+    swap: { ...below.swap, ...above.swap },
+    hide,
+    palette: { ...below.palette, ...above.palette },
+  }
 }
 
 export function characterPose(look: Look, row: AgentRow, now: number, mode: MotionMode): CharacterPose {
@@ -142,9 +276,11 @@ export function characterPose(look: Look, row: AgentRow, now: number, mode: Moti
   // The role and the state choose the style; the rest of the look is the caller's key.
   const keys = [`${role ?? '-'}:${state}`]
   const changes: number[] = []
-  // The entrance ends at a fixed time. Only a different working style changes the pose then.
-  if (state === 'entering' && !sameLoop(style, styleOf(pack, rules, { role, state: 'working', parts }))) {
-    changes.push(row.startedAt + ENTER_MS)
+  // The entrance ends at a fixed time. Only a different next style changes the pose then.
+  if (state === 'entering') {
+    const end = row.startedAt + ENTER_MS
+    const next = styleOf(pack, rules, { role, state: characterState(row, end).state, parts })
+    if (!sameStyle(style, next, mode)) changes.push(end)
   }
   if (mode === 'off') return { key: keys[0]!, pose: { body: onPose(pack, style, undefined, parts) }, nextAt: changes[0] ?? null }
   const pose: { body?: Pose['body']; parts?: Record<string, PartFrame> } = {}
@@ -156,6 +292,20 @@ export function characterPose(look: Look, row: AgentRow, now: number, mode: Moti
     frame = body.frames[index]
     keys.push(String(index))
     if (nextAt !== null) changes.push(since + nextAt)
+  }
+  // Track 1 plays only in full motion: a trick does not tell the state.
+  if (mode === 'full') {
+    // Track 0 of working runs from the spawn, but working begins after the entrance, or when the agent runs again.
+    const statusAt = Number.isFinite(row.statusAt) ? row.statusAt : row.startedAt
+    const begun = state === 'working' ? Math.max(row.startedAt + ENTER_MS, statusAt) : since
+    const one = trackOne(look, row, style, state, begun, now)
+    changes.push(...one.changes)
+    if (one.shot !== null) {
+      const { index, nextAt } = frameAt(one.shot.motion, now - one.shot.startsAt)
+      frame = layered(frame, one.shot.motion.frames[index])
+      keys.push(`1:${one.shot.name}:${index}`)
+      if (nextAt !== null) changes.push(one.shot.startsAt + nextAt)
+    }
   }
   pose.body = onPose(pack, style, frame, parts)
   // A part motion is the part's own: it runs from the spawn, whatever the state.
