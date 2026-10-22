@@ -9,7 +9,7 @@ import { initialSettings } from './core/avatar/settings.ts'
 import type { AvatarSettings } from './core/avatar/settings.ts'
 import { packEntries, RESERVED } from './core/pack/registry.ts'
 import type { PackEntry, PackFiles } from './core/pack/registry.ts'
-import { builtinPackTexts } from './packs.generated.ts'
+import { builtinPacks } from './packs.generated.ts'
 import { NO_PACK_FILES, samePackFiles, scanPacks } from './packs.ts'
 import { PREVIEW_MS } from './view/preview.ts'
 
@@ -78,7 +78,7 @@ async function configKey($: EngineInterface, field: string): Promise<string | un
 export type PackCommandContext = { openPane: () => Promise<void> }
 
 async function select($: EngineInterface, name: string): Promise<string> {
-  const entries = packEntries(builtinPackTexts, await refreshPacks($))
+  const entries = packEntries(builtinPacks, await refreshPacks($))
   const entry = entries.find(e => e.name === name)
   if (entry === undefined) return `No pack ${JSON.stringify(name)}. Packs: ${entries.map(e => e.name).join(', ')}.`
   if (!entry.result.ok) return `${name} is not valid, so it stays unselected: /crabarium pack check ${name}`
@@ -103,11 +103,11 @@ export async function runPackCommand($: EngineInterface, args: readonly string[]
     case undefined:
     case 'reload': {
       const files = await refreshPacks($)
-      return packListText(packEntries(builtinPackTexts, files), config.pack, files.dir, errors)
+      return packListText(packEntries(builtinPacks, files), config.pack, files.dir, errors)
     }
     case 'check': {
       const target = name ?? config.pack
-      const entries = packEntries(builtinPackTexts, await refreshPacks($))
+      const entries = packEntries(builtinPacks, await refreshPacks($))
       return checkText(
         entries.find(e => e.name === target),
         target,
@@ -119,7 +119,7 @@ export async function runPackCommand($: EngineInterface, args: readonly string[]
         await update($, preview, () => null)
         return 'The preview ended.'
       }
-      const entry = packEntries(builtinPackTexts, await refreshPacks($)).find(e => e.name === name)
+      const entry = packEntries(builtinPacks, await refreshPacks($)).find(e => e.name === name)
       if (entry === undefined) return `No pack ${JSON.stringify(name)}.`
       if (!entry.result.ok) return `${name} is not valid: /crabarium pack check ${name}`
       const now = await $.clock.now()

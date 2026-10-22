@@ -5,7 +5,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import { checkText, packListText } from '../hooks/commands.ts'
 import { parseRules } from '../hooks/core/avatar/select.ts'
 import { activePack, packEntries } from '../hooks/core/pack/registry.ts'
-import { builtinPackTexts } from '../hooks/packs.generated.ts'
+import { builtinPacks } from '../hooks/packs.generated.ts'
 import { samePackFiles } from '../hooks/packs.ts'
 import { PANE_ID } from '../hooks/state.ts'
 import { fallbackPack } from '../hooks/view/avatar.ts'
@@ -127,7 +127,7 @@ describe('packEntries and activePack', () => {
       broken: { mtimeMs: 1, size: 1, error: 'too large' },
     },
   }
-  const entries = packEntries(builtinPackTexts, files)
+  const entries = packEntries(builtinPacks, files)
 
   test('a user pack replaces the built-in pack with the same name; the list is sorted', () => {
     expect(entries.map(e => `${e.name}:${e.source}`)).toEqual(['broken:user', 'mine:user', 'minimal:user'])
@@ -169,7 +169,7 @@ describe('packEntries and activePack', () => {
     ).toBe('mine (user) is not valid:\n  name: is "other", but the directory is "mine"')
     expect(
       checkText(
-        packEntries(builtinPackTexts, { dir: null, packs: {} }).find(e => e.name === 'minimal'),
+        packEntries(builtinPacks, { dir: null, packs: {} }).find(e => e.name === 'minimal'),
         'minimal',
         [],
       ),
@@ -197,6 +197,21 @@ describe('/crabarium pack', () => {
     files[`${DIR}/mine/pack.json`] = { text: packText('mine'), mtimeMs: 2 }
     await packCommand($, 'reload')
     expect(log.reads).toHaveLength(2)
+  })
+
+  test('reads pack.css next to pack.json, again when only its time changes, and check names its line', async ($, on) => {
+    mock.clock(on, { now: 0 })
+    engine(on)
+    const files: Record<string, FakeFile> = {
+      [`${DIR}/mine/pack.json`]: { text: packText('mine'), mtimeMs: 1 },
+      [`${DIR}/mine/pack.css`]: { text: '[state=idle] { play: bob; }', mtimeMs: 1 },
+    }
+    const log = fakeFs(on, files)
+    expect(await packCommand($, 'check mine')).toMatch(/^mine \(user\) is valid/)
+    files[`${DIR}/mine/pack.css`] = { text: '[state=idle] {\n  play: nope;\n}', mtimeMs: 2 }
+    expect(await packCommand($, 'check mine')).toContain('pack.css:2:3: "nope" is not a motion in the pack or a built-in motion')
+    await packCommand($, 'reload')
+    expect(log.reads.filter(r => r.endsWith('pack.css'))).toHaveLength(2)
   })
 
   test('selects a valid pack through /config, and refuses an invalid or unknown one', async ($, on) => {

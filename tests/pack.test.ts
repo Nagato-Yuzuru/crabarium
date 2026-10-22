@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing'
 
+import { loadPack } from '../hooks/core/pack/load.ts'
 import { compose, parsePack, parsePackText } from '../hooks/core/pack/pack.ts'
 import type { Pack, PixelGrid } from '../hooks/core/pack/pack.ts'
 import { packSchema } from '../hooks/core/pack/schema.ts'
 import { validateSchema } from '../hooks/core/pack/validate.ts'
-import { builtinPackTexts } from '../hooks/packs.generated.ts'
+import { builtinPacks } from '../hooks/packs.generated.ts'
 import { builtinPack } from '../hooks/view/avatar.ts'
 import { cellsBase64, DEFAULT_COLOR, halfBlockCells } from '../hooks/view/raster.ts'
 import { packFixtures, validPack } from './fixtures/packs.ts'
@@ -140,14 +141,14 @@ describe('cellsBase64', () => {
 })
 
 describe('built-in packs', () => {
-  for (const name of Object.keys(builtinPackTexts)) {
+  for (const name of Object.keys(builtinPacks)) {
     test(`${name} is a valid pack`, () => {
-      expect(parsePackText(builtinPackTexts[name]!)).toEqual(expect.objectContaining({ ok: true }))
+      expect(loadPack(builtinPacks[name]!)).toEqual(expect.objectContaining({ ok: true }))
     })
   }
 
   test('the minimal pack gives a fixed character', () => {
-    const { columns, rows, words } = halfBlockCells(compose(builtinPack('minimal')))
+    const { columns, rows, words } = halfBlockCells(compose(builtinPack('minimal').pack))
     expect([columns, rows]).toEqual([16, 4])
     expect(cellsBase64(words)).toBe(MINIMAL_GOLDEN)
   })

@@ -10,7 +10,7 @@ if (!hasEngineTypes) {
   console.warn('No engine types in .claude-plugin/types/: type-aware lint and the type check are off. Run pnpm dev once to get them.')
 }
 
-const generated = ['.claude-plugin/types/', 'hooks/packs.generated.ts']
+const generated = ['.claude-plugin/types/', 'hooks/packs.generated.ts', 'hooks/vendor/']
 
 export default defineConfig({
   lint: {

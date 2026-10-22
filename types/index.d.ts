@@ -84,8 +84,15 @@ export type UsageBoard = {
   agents: Readonly<Record<string, AgentUsage>>
 }
 
-/** A user pack as the mod read it: the text of its `pack.json`, or why it could not read it; the file time and size in bytes. */
-export type UserPackFile = { mtimeMs: number; size: number } & ({ text: string } | { error: string })
+/** A file as the mod read it: its text, its file time, and its size in bytes. */
+export type ReadFile = { mtimeMs: number; size: number; text: string }
+
+/**
+ * A user pack as the mod read it: the text of its `pack.json` and of its
+ * `pack.css` when it has one, or why it could not read them; the file time and
+ * size of `pack.json`. A state from a build before `pack.css` has no `css`.
+ */
+export type UserPackFile = { mtimeMs: number; size: number } & ({ text: string; css?: ReadFile } | { error: string })
 
 /**
  * The user packs, by directory name. `dir` is the packs directory; `null`

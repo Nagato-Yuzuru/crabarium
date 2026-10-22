@@ -214,7 +214,7 @@ describe('motions', () => {
   })
 
   test('a state uses the pack motion, then the built-in motion; finished stands still', () => {
-    const minimal = builtinPack('minimal')
+    const minimal = builtinPack('minimal').pack
     expect(motionOf(minimal, 'working')).toBe(minimal.motions!.walk!)
     expect(motionOf(minimal, 'failed')).toBe(minimal.motions!.slump!)
     expect(motionOf(minimal, 'idle')).toBe(BUILTIN_MOTIONS.bob!)
@@ -227,7 +227,7 @@ describe('motions', () => {
 })
 
 describe('characterPose', () => {
-  const minimal = builtinPack('minimal')
+  const minimal = builtinPack('minimal').pack
   const none = {}
 
   test('a working character moves at the frame rate of its motion', () => {
