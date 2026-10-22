@@ -1,5 +1,8 @@
 # Hold new releases for 7 days before install.
 minimumReleaseAge: 10080
+# A security fix can pin new transitive releases that have no older match.
+# Install them instead of failing; other dependencies still get a mature version.
+minimumReleaseAgeStrict: false
 minimumReleaseAgeExclude:
   # The engine floor in hooks/core/version.ts tracks the newest release.
   - '@anthropic-ai/claude-code'
