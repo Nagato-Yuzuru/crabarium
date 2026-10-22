@@ -58,7 +58,7 @@ export function stateFigures(pack: Pack, rules: readonly Rule[] = []): { state: 
 /**
  * Each frame of each track 1 motion that can play, in the default outfit, on
  * the base pose of a state that plays it: the tricks of each state that has
- * `idle-every`, and the `once` motion of `finished` and `failed`. A motion on
+ * `trick-every`, and the `once` motion of `finished` and `failed`. A motion on
  * the same pose shows once, with the first state that plays it.
  */
 export function trackOneFigures(pack: Pack, rules: readonly Rule[] = []): { state: string; motion: string; figures: Figure[] }[] {
@@ -68,7 +68,7 @@ export function trackOneFigures(pack: Pack, rules: readonly Rule[] = []): { stat
     const style = styleOf(pack, rules, { role: null, state, parts })
     const once = state === 'finished' || state === 'failed' ? style.once[state] : undefined
     const kinds = [
-      ...(style.idleEvery === null ? [] : usable(pack, style, style.tricks, parts).map(choice => ({ kind: 'trick', choice }))),
+      ...(style.trickEvery === null ? [] : usable(pack, style, style.tricks, parts).map(choice => ({ kind: 'trick', choice }))),
       ...(once === undefined ? [] : usable(pack, style, once, parts).map(choice => ({ kind: 'once', choice }))),
     ]
     for (const { kind, choice } of kinds) {

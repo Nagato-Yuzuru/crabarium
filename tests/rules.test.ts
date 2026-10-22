@@ -27,14 +27,14 @@ function messages(css: string): string[] {
 describe('parseRules', () => {
   test('reads selectors, specificity, and each property', () => {
     const { rules, errors } = parseRules(`
-      :root { body: base; tricks: hop 2, bob; idle-every: 8s 20s; }
+      :root { body: base; tricks: hop 2, bob; trick-every: 8s 20s; }
       [state=working] { play: walk; }
       [held=hammer][state=working] { body: squash; lock: body; }
       [role=builder]:finished { once: hop; }
     `)
     expect(errors).toEqual([])
     expect(rules.map(r => [r.selector, r.specificity, r.set])).toEqual([
-      [{ attrs: {}, event: null }, 0, { pose: { body: 'base' }, lock: [], tricks: { hop: 2, bob: 1 }, idleEvery: [8000, 20000] }],
+      [{ attrs: {}, event: null }, 0, { pose: { body: 'base' }, lock: [], tricks: { hop: 2, bob: 1 }, trickEvery: [8000, 20000] }],
       [{ attrs: { state: 'working' }, event: null }, 1, { pose: {}, lock: [], play: 'walk' }],
       [{ attrs: { held: 'hammer', state: 'working' }, event: null }, 2, { pose: { body: 'squash' }, lock: ['body'] }],
       [{ attrs: { role: 'builder' }, event: 'finished' }, 2, { pose: {}, lock: [], once: { hop: 1 } }],
@@ -61,8 +61,8 @@ describe('parseRules', () => {
       [':finished:failed { once: hop; }', '1:1 ":finished:failed" waits for two events; one event comes at a time'],
       ['[state=idle][state=working] { play: bob; }', '1:1 "[state=idle][state=working]" names state twice, so it never holds'],
       [':root { tricks: hop 0; }', '1:9 tricks: the weight of hop is not a whole number from 1 to 100'],
-      [':root { idle-every: 20s 8s; }', '1:9 idle-every the times are at least 1s, and the second is not shorter than the first'],
-      [':root { idle-every: soon; }', '1:9 idle-every is a time, or a shortest and a longest time, for example 8s 20s'],
+      [':root { trick-every: 20s 8s; }', '1:9 trick-every the times are at least 1s, and the second is not shorter than the first'],
+      [':root { trick-every: soon; }', '1:9 trick-every is a time, or a shortest and a longest time, for example 8s 20s'],
     ]
     for (const [css, error] of cases) {
       const { rules, errors } = parseRules(css)

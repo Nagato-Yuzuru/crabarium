@@ -19,7 +19,7 @@ export type Style = {
   play: string | null
   tricks: Weighted
   once: Readonly<Partial<Record<Event, Weighted>>>
-  idleEvery: readonly [minMs: number, maxMs: number] | null
+  trickEvery: readonly [minMs: number, maxMs: number] | null
 }
 
 const NO_PLACE = { line: 0, column: 0 }
@@ -69,7 +69,7 @@ export function styleOf(pack: Pack, rules: readonly Rule[], tags: Tags): Style {
   const tricks: Record<string, number> = {}
   const once: Partial<Record<Event, Weighted>> = {}
   let play: string | null = null
-  let idleEvery: Style['idleEvery'] = null
+  let trickEvery: Style['trickEvery'] = null
   for (const rule of cascade(pack, rules)) {
     if (!matches(rule, tags)) continue
     const { set } = rule
@@ -86,9 +86,9 @@ export function styleOf(pack: Pack, rules: readonly Rule[], tags: Tags): Style {
     }
     if (set.play !== undefined) play = set.play
     for (const [name, weight] of Object.entries(set.tricks ?? {})) tricks[name] = (own(tricks, name) ?? 0) + weight
-    if (set.idleEvery !== undefined) idleEvery = set.idleEvery
+    if (set.trickEvery !== undefined) trickEvery = set.trickEvery
   }
-  return { pose: { ...pose, ...locked }, locks, play, tricks, once, idleEvery }
+  return { pose: { ...pose, ...locked }, locks, play, tricks, once, trickEvery }
 }
 
 /** A motion of the pack, else a built-in motion with that name. */

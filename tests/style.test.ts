@@ -100,16 +100,16 @@ describe('styleOf: the cascade', () => {
     expect(styleOf(pack, rules, tags({ state: 'finished' })).play).toBeNull()
   })
 
-  test('tricks add their weights; once is kept for each event; idle-every for the agent', () => {
+  test('tricks add their weights; once is kept for each event; trick-every for the agent', () => {
     const { pack, rules } = load(`
-      :root { tricks: wave 1, spin 2; idle-every: 5s 9s; }
+      :root { tricks: wave 1, spin 2; trick-every: 5s 9s; }
       [role=builder] { tricks: wave 3; }
       :finished { once: spin; }
       [role=builder]:finished { once: wave; }
       :failed { once: spin; }
     `)
     const style = styleOf(pack, rules, tags({ role: 'builder' }))
-    expect([style.tricks, style.once, style.idleEvery]).toEqual([
+    expect([style.tricks, style.once, style.trickEvery]).toEqual([
       { wave: 4, spin: 2 },
       { finished: { wave: 1 }, failed: { spin: 1 } },
       [5000, 9000],

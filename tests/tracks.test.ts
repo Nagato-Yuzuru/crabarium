@@ -94,8 +94,8 @@ describe('track 1: once on an event', () => {
 })
 
 describe('track 1: tricks', () => {
-  test('two tricks are from the shortest to the longest idle-every time apart, and the first is after the shortest', () => {
-    const shots = trackOne(look(':root { tricks: spin; idle-every: 2s 4s; }'), row(), 0, 120_000)
+  test('two tricks are from the shortest to the longest trick-every time apart, and the first is after the shortest', () => {
+    const shots = trackOne(look(':root { tricks: spin; trick-every: 2s 4s; }'), row(), 0, 120_000)
     const times = starts(shots)
     expect(times.length).toBeGreaterThan(25)
     expect(times[0]).toBeGreaterThanOrEqual(2000)
@@ -106,35 +106,35 @@ describe('track 1: tricks', () => {
   })
 
   test('a trick plays once through: 500 ms for spin', () => {
-    const shots = trackOne(look(':root { tricks: spin; idle-every: 2s 4s; }'), row(), 0, 20_000)
+    const shots = trackOne(look(':root { tricks: spin; trick-every: 2s 4s; }'), row(), 0, 20_000)
     const first = starts(shots)[0]!
     expect(shots.filter(s => s.t >= first && s.t < first + 1000 && s.shot === 'spin')).toHaveLength(50)
   })
 
   test('the weights pick among the tricks', () => {
-    const shots = trackOne(look(':root { tricks: spin 1, wave 1; idle-every: 1s; }'), row(), 0, 60_000)
+    const shots = trackOne(look(':root { tricks: spin 1, wave 1; trick-every: 1s; }'), row(), 0, 60_000)
     expect(new Set(shots.map(s => s.shot))).toEqual(new Set(['', 'spin', 'wave']))
   })
 
   test('two agents do not trick at the same times', () => {
-    const at = look(':root { tricks: spin; idle-every: 2s 4s; }')
+    const at = look(':root { tricks: spin; trick-every: 2s 4s; }')
     expect(starts(trackOne(at, row({ id: 'a1' }), 0, 30_000))).not.toEqual(starts(trackOne(at, row({ id: 'b2' }), 0, 30_000)))
   })
 
   test('a trick that uses a locked channel is not in the pool', () => {
-    const at = look('[held=hammer] { arm: hold; lock: arm; } :root { tricks: wave; idle-every: 1s; }')
+    const at = look('[held=hammer] { arm: hold; lock: arm; } :root { tricks: wave; trick-every: 1s; }')
     expect(trackOne({ ...at, parts: { held: 'hammer' } }, row(), 0, 20_000).every(s => s.shot === '')).toBe(true)
     expect(trackOne(at, row(), 0, 20_000).some(s => s.shot === 'wave')).toBe(true)
   })
 
   test('the tricks of a state play only in that state', () => {
-    const at = look('[state=idle] { tricks: spin; idle-every: 1s; }')
+    const at = look('[state=idle] { tricks: spin; trick-every: 1s; }')
     expect(trackOne(at, row(), 0, 20_000).every(s => s.shot === '')).toBe(true)
     expect(trackOne(at, row({ status: 'waiting' }), 0, 20_000).some(s => s.shot === 'spin')).toBe(true)
   })
 
   test('nextAt is exact: the pose does not change before it, and a trick starts at it', () => {
-    const at = look(':root { tricks: spin; idle-every: 2s 4s; }')
+    const at = look(':root { tricks: spin; trick-every: 2s 4s; }')
     const agent = row()
     for (let t = 0; t < 30_000; t += 370) {
       const { key, nextAt } = characterPose(at, agent, t, 'full')
@@ -146,7 +146,7 @@ describe('track 1: tricks', () => {
 })
 
 test('track 1 goes over track 0 per channel: offsets add, and the swaps of both stay', () => {
-  const at = look(':root { play: nod; tricks: spin; idle-every: 1s; }')
+  const at = look(':root { play: nod; tricks: spin; trick-every: 1s; }')
   const agent = row({ status: 'waiting' })
   const t = starts(trackOne(at, agent, 0, 10_000))[0]!
   expect(characterPose(at, agent, t, 'full').pose.body).toEqual({
@@ -155,7 +155,7 @@ test('track 1 goes over track 0 per channel: offsets add, and the swaps of both 
     hide: [],
     palette: {},
   })
-  const waving = look(':root { play: nod; tricks: wave; idle-every: 1s; arm: hold; }')
+  const waving = look(':root { play: nod; tricks: wave; trick-every: 1s; arm: hold; }')
   const w = starts(trackOne(waving, agent, 0, 10_000))[0]!
   expect(characterPose(waving, agent, w, 'full').pose.body?.swap).toEqual({ arm: 'up' })
 })
@@ -164,7 +164,7 @@ test('the contact sheet shows each track 1 motion that can play, frame by frame,
   const at = look(`
     [state=finished] { arm: hold; }
     [state=working] { arm: hold; lock: arm; }
-    :root { tricks: wave; idle-every: 1s; }
+    :root { tricks: wave; trick-every: 1s; }
     :finished { once: spin; }
     :click { once: spin; }
   `)
@@ -174,7 +174,7 @@ test('the contact sheet shows each track 1 motion that can play, frame by frame,
     ['finished trick', 'wave', [{ arm: 'up' }, { arm: 'base' }]],
     ['finished once', 'spin', [{ arm: 'hold', figure: 'turn' }, { arm: 'hold' }]],
   ])
-  // Tricks with no idle-every never play, so the sheet does not show them.
+  // Tricks with no trick-every never play, so the sheet does not show them.
   const never = look(':root { tricks: wave; }')
   expect(trackOneFigures(never.pack, never.rules)).toEqual([])
 })
@@ -182,7 +182,7 @@ test('the contact sheet shows each track 1 motion that can play, frame by frame,
 describe('track 1: regressions', () => {
   test('a lock on a slot keeps a frame from hiding the part, on both tracks', () => {
     const hammer = { parts: { held: 'hammer' } }
-    const tricks = look('[held=hammer] { lock: held; } :root { tricks: drop; idle-every: 1s; }', hammer)
+    const tricks = look('[held=hammer] { lock: held; } :root { tricks: drop; trick-every: 1s; }', hammer)
     expect(trackOne(tricks, row(), 0, 20_000).every(s => s.shot === '')).toBe(true)
     const loop = look('[held=hammer] { lock: held; } :root { play: drop; }', hammer)
     expect(characterPose(loop, row(), 100, 'full').pose.body?.hide).toEqual([])
@@ -194,7 +194,7 @@ describe('track 1: regressions', () => {
     const big = JSON.parse(json)
     big.groups.tail = { at: [0, 3], rows: ['a'] }
     big.motions.big = { fps: 4, loop: false, frames }
-    const result = loadPack({ json: JSON.stringify(big), css: '[held=hammer] { lock: arm; } :root { tricks: big; idle-every: 1000s; }' })
+    const result = loadPack({ json: JSON.stringify(big), css: '[held=hammer] { lock: arm; } :root { tricks: big; trick-every: 1000s; }' })
     if (!result.ok) throw new Error(JSON.stringify(result.errors))
     const at: Look = { pack: result.pack, rules: result.rules, role: null, parts: { held: 'hammer' } }
     const begin = performance.now()
@@ -203,19 +203,19 @@ describe('track 1: regressions', () => {
   })
 
   test('the end of the entrance is a change time when only the tricks of working differ', () => {
-    const at = look(':root { play: still; } [state=working] { tricks: spin; idle-every: 1s; }')
+    const at = look(':root { play: still; } [state=working] { tricks: spin; trick-every: 1s; }')
     expect(characterPose(at, row(), 100, 'full').nextAt).toBe(1500)
   })
 
   test('the first trick of working is at least the shortest time after the entrance', () => {
-    const at = look('[state=working] { tricks: spin; idle-every: 1s 1.4s; }')
+    const at = look('[state=working] { tricks: spin; trick-every: 1s 1.4s; }')
     for (const id of ['a1', 'b2', 'c3', 'd4', 'e5', 'f6', 'g7', 'h8']) {
       expect(starts(trackOne(at, row({ id }), 0, 6000))[0]).toBeGreaterThanOrEqual(2500)
     }
   })
 
   test('the picks look random for a total weight that is a power of two, and differ between agents', () => {
-    const at = look(':root { tricks: spin 1, wave 1; idle-every: 1s; }')
+    const at = look(':root { tricks: spin 1, wave 1; trick-every: 1s; }')
     const picks = (id: string) => {
       const shots = trackOne(at, row({ id }), 0, 400_000)
       return starts(shots).map(t => shots.find(s => s.t === t)!.shot)
@@ -227,8 +227,8 @@ describe('track 1: regressions', () => {
     expect(picks('b2')).not.toEqual(a)
   })
 
-  test('with one idle-every time, two agents that start together do not trick in step', () => {
-    const at = look(':root { tricks: spin; idle-every: 5s; }')
+  test('with one trick-every time, two agents that start together do not trick in step', () => {
+    const at = look(':root { tricks: spin; trick-every: 5s; }')
     const a = starts(trackOne(at, row({ id: 'a1' }), 0, 30_000))
     const b = starts(trackOne(at, row({ id: 'b2', startedAt: 3, statusAt: 3 }), 0, 30_000))
     expect(b.map((t, i) => Math.abs(t - a[i]!)).some(d => d > 100)).toBe(true)

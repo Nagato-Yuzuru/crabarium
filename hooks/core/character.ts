@@ -136,7 +136,7 @@ const sameRecord = (a: Readonly<Record<string, unknown>>, b: Readonly<Record<str
 function sameStyle(a: Style, b: Style, mode: MotionMode): boolean {
   const same = a.play === b.play && sameRecord(a.pose, b.pose) && a.locks.size === b.locks.size && [...a.locks].every(l => b.locks.has(l))
   if (!same || mode !== 'full') return same
-  return sameRecord(a.tricks, b.tricks) && a.idleEvery?.[0] === b.idleEvery?.[0] && a.idleEvery?.[1] === b.idleEvery?.[1]
+  return sameRecord(a.tricks, b.tricks) && a.trickEvery?.[0] === b.trickEvery?.[0] && a.trickEvery?.[1] === b.trickEvery?.[1]
 }
 
 /** The distinct swaps and hides of a motion: what a lock can keep it from. */
@@ -207,7 +207,7 @@ type Shot = { name: string; motion: Motion; startsAt: number }
  * change. `begun` is when the state began. An event that the state starts
  * (`finished`, `failed`) plays its `once` motion from then. After it, trick k
  * starts at `base + min + phase + floor(k * mid) + jitter(k)`: `mid` is the
- * middle of the two `idle-every` times, the jitter is from 0 to half their
+ * middle of the two `trick-every` times, the jitter is from 0 to half their
  * difference, and the phase (from 0 to `mid`) is the agent's own. So two
  * tricks are from `min` to `max` apart, the first is from `min` to
  * `min + max` after the base, two agents do not trick in step, and the trick
@@ -231,10 +231,10 @@ function trackOne(
       if (now < base) return { shot: { name: chosen.name, motion: chosen.motion, startsAt: begun }, changes: [base] }
     }
   }
-  if (style.idleEvery === null) return { shot: null, changes: [] }
+  if (style.trickEvery === null) return { shot: null, changes: [] }
   const pool = usable(pack, style, style.tricks, parts)
   if (pool.length === 0) return { shot: null, changes: [] }
-  const [min, max] = style.idleEvery
+  const [min, max] = style.trickEvery
   const mid = (min + max) / 2
   const first = base + min + (hash(`${row.id}:${base}`) % Math.floor(mid))
   const jitter = Math.floor((max - min) / 2) + 1
