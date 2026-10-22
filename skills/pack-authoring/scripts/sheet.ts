@@ -2,7 +2,7 @@
 // small size, on a dark and on a light terminal background. Pure: it gives
 // RGBA pixels, and the caller encodes them.
 import { pickOutfit } from '../../../hooks/core/avatar/select.ts'
-import { onPose } from '../../../hooks/core/character.ts'
+import { onPose, usable } from '../../../hooks/core/character.ts'
 import { compose, halve } from '../../../hooks/core/pack/pack.ts'
 import type { Pack, PartSelection, PixelGrid, Pose, Role } from '../../../hooks/core/pack/pack.ts'
 import type { Rule } from '../../../hooks/core/pack/rules.ts'
@@ -53,6 +53,36 @@ export function stateFigures(pack: Pack, rules: readonly Rule[] = []): { state: 
       figures: frames.map((frame, i) => ({ label: `${i + 1}`, parts, pose: { body: onPose(pack, style, frame, parts) } })),
     }
   })
+}
+
+/**
+ * Each frame of each track 1 motion that can play, in the default outfit, on
+ * the base pose of a state that plays it: the tricks of each state that has
+ * `idle-every`, and the `once` motion of `finished` and `failed`. A motion on
+ * the same pose shows once, with the first state that plays it.
+ */
+export function trackOneFigures(pack: Pack, rules: readonly Rule[] = []): { state: string; motion: string; figures: Figure[] }[] {
+  const parts = pack.defaults?.parts ?? {}
+  const rows = new Map<string, { state: string; motion: string; figures: Figure[] }>()
+  for (const state of CHARACTER_STATES) {
+    const style = styleOf(pack, rules, { role: null, state, parts })
+    const once = state === 'finished' || state === 'failed' ? style.once[state] : undefined
+    const kinds = [
+      ...(style.idleEvery === null ? [] : usable(pack, style, style.tricks, parts).map(choice => ({ kind: 'trick', choice }))),
+      ...(once === undefined ? [] : usable(pack, style, once, parts).map(choice => ({ kind: 'once', choice }))),
+    ]
+    for (const { kind, choice } of kinds) {
+      const key = `${kind} ${choice.name} ${JSON.stringify(style.pose)}`
+      if (rows.has(key)) continue
+      const figures = choice.motion.frames.map((frame, i) => ({
+        label: `${i + 1}`,
+        parts,
+        pose: { body: onPose(pack, style, frame, parts) },
+      }))
+      rows.set(key, { state: `${state} ${kind}`, motion: choice.name, figures })
+    }
+  }
+  return [...rows.values()]
 }
 
 class Canvas {
@@ -138,7 +168,7 @@ export function contactSheet(pack: Pack, options: SheetOptions): Image {
     return canvas.image()
   }
 
-  const states = stateFigures(pack, options.rules)
+  const states = [...stateFigures(pack, options.rules), ...trackOneFigures(pack, options.rules)]
   const columns = Math.max(outfits.length, 1 + Math.max(...states.map(s => s.figures.length)))
   const maxWidth = options.maxWidth ?? 1500
   const scale = Math.max(4, Math.min(16, Math.floor(maxWidth / (columns * (w + 3)))))
