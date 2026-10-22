@@ -20,6 +20,10 @@ function errorsOf(css: string): string[] {
   return [...errors, ...checkRules(pack, rules)].map(e => `${e.line}:${e.column} ${e.message}`)
 }
 
+function messages(css: string): string[] {
+  return parseRules(css).errors.map(e => `${e.line}:${e.column} ${e.message}`)
+}
+
 describe('parseRules', () => {
   test('reads selectors, specificity, and each property', () => {
     const { rules, errors } = parseRules(`
@@ -67,6 +71,29 @@ describe('parseRules', () => {
     }
   })
 
+  test('a nested rule adds its conditions to the parent, comes after it, and keeps its own line', () => {
+    const { rules, errors } = parseRules(`[held=hammer] {
+  body: squash;
+  &[state=working] { play: walk; }
+  &:finished { once: hop; }
+}`)
+    expect(errors).toEqual([])
+    expect(rules.map(r => [r.selector, r.specificity, r.at.line])).toEqual([
+      [{ attrs: { held: 'hammer' }, event: null }, 1, 1],
+      [{ attrs: { held: 'hammer', state: 'working' }, event: null }, 2, 3],
+      [{ attrs: { held: 'hammer' }, event: 'finished' }, 2, 4],
+    ])
+  })
+
+  test('a nested selector is & and then conditions; a descendant or a repeated key is an error', () => {
+    expect(messages('[held=hammer] {\n  & [state=idle] { play: bob; }\n}')[0]).toContain(
+      '2:3 "& [state=idle]": a nested selector is & and then conditions',
+    )
+    expect(messages('[held=hammer] { [state=idle] { play: bob; } }')[0]).toContain('a nested selector is &')
+    expect(messages('[state=idle] { &[state=working] { play: bob; } }')[0]).toContain('names state again under a rule that names it')
+    expect(messages(':finished { &:failed { once: hop; } }')[0]).toContain('waits for a second event')
+  })
+
   test('a syntax error comes from the parser, with its line and column', () => {
     expect(parseRules(':root { play bob; }').errors).toEqual([{ line: 1, column: 14, message: "property missing ':'" }])
   })
@@ -86,9 +113,9 @@ describe('checkRules', () => {
     ])
     expect(errorsOf('[cape=red] { play: bob; }')).toEqual(['1:1 [cape=red]: the keys are role, state, and the part slots'])
     expect(errorsOf('[held=wand] { play: bob; }')).toEqual(['1:1 [held=wand]: "wand" is not a part in parts.held'])
-    expect(errorsOf(':root { arm: up; }')).toEqual(['1:9 "arm" is not a group, so it is not a channel'])
-    expect(errorsOf(':root { body: up; }')).toEqual(['1:9 body: "up" is not base or a variant in groups.body.variants'])
-    expect(errorsOf(':root { lock: arm; }')).toEqual(['1:9 "arm" is not a group, so it is not a channel'])
+    expect(errorsOf(':root { arm: up; }')).toEqual(['1:9 "arm" is not figure, a group, or a part slot, so it is not a channel'])
+    expect(errorsOf(':root { body: up; }')).toEqual(['1:9 body: "up" is not base or a variant of body'])
+    expect(errorsOf(':root { lock: arm; }')).toEqual(['1:9 "arm" is not figure, a group, or a part slot, so it is not a channel'])
     expect(errorsOf(':root {\n  play: nope;\n}')).toEqual(['2:3 "nope" is not a motion in the pack or a built-in motion'])
   })
 })

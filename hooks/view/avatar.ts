@@ -2,10 +2,10 @@
 import type { AgentRow } from '../core/agents.ts'
 import { DEFAULT_PACK } from '../core/avatar/settings.ts'
 import { characterPose } from '../core/character.ts'
-import type { MotionMode } from '../core/character.ts'
+import type { Look, MotionMode } from '../core/character.ts'
 import { loadPack } from '../core/pack/load.ts'
 import { compose, halve } from '../core/pack/pack.ts'
-import type { Pack, PartSelection } from '../core/pack/pack.ts'
+import type { Pack } from '../core/pack/pack.ts'
 import type { Rule } from '../core/pack/rules.ts'
 import { builtinPacks } from '../packs.generated.ts'
 import type { CharacterSize } from './layout.ts'
@@ -50,16 +50,10 @@ export function fallbackPack(): { name: string; pack: Pack; rules: readonly Rule
   return { name: DEFAULT_PACK, ...defaultPack }
 }
 
-/** The character of an agent in an outfit at `now`, full size or half size. */
-export function avatarFrame(
-  pack: Pack,
-  parts: PartSelection,
-  row: AgentRow,
-  now: number,
-  mode: MotionMode,
-  size: CharacterSize = 'full',
-): AvatarFrame {
-  const { key, pose, nextAt } = characterPose(pack, parts, row, now, mode)
+/** The character of an agent with a look at `now`, full size or half size. */
+export function avatarFrame(look: Look, row: AgentRow, now: number, mode: MotionMode, size: CharacterSize = 'full'): AvatarFrame {
+  const { pack, parts } = look
+  const { key, pose, nextAt } = characterPose(look, row, now, mode)
   const outfit = Object.entries(parts)
     .map(([slot, name]) => `${slot}:${name}`)
     .toSorted()

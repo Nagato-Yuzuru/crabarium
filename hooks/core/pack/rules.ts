@@ -8,9 +8,8 @@
 //   [held=hammer] { armR: hold; lock: armR; }
 //   [role=builder]:finished { once: jump; }
 import { AttributeAction, CssTypes, parse, parseSelector, SelectorType } from '../../vendor/css.js'
-import { own } from '../own.ts'
 import { BUILTIN_MOTIONS } from './motions.ts'
-import { partOf } from './pack.ts'
+import { BASE, isChannel, isChannelValue, partOf } from './pack.ts'
 import type { Pack, SchemaError } from './pack.ts'
 import { CHARACTER_STATES, MAX_WEIGHT, ROLES } from './schema.ts'
 
@@ -25,7 +24,7 @@ export type Place = { line: number; column: number }
 /** Motion names with weights, for a random pick. */
 export type Weighted = Readonly<Record<string, number>>
 
-/** What one rule sets. A channel is a body group; its value is `base` (the group's rows) or a variant. */
+/** What one rule sets. A channel is `figure`, a group, or a part slot; its value is `base` (the node's own rows) or a variant. */
 export type Declarations = {
   pose: Readonly<Record<string, string>>
   lock: readonly string[]
@@ -49,9 +48,6 @@ export type Rule = {
 }
 
 export type RuleError = Place & { message: string }
-
-/** The value of a channel that draws the group's own rows. */
-export const BASE = 'base'
 
 const NAME = /^[a-zA-Z][a-zA-Z0-9-]{0,31}$/
 const DURATION = /^(\d{1,6}(?:\.\d{1,3})?)(ms|s)$/
@@ -187,55 +183,92 @@ function declare(set: Mutable, property: string, value: string, event: Event | n
 
 const START: Place = { line: 1, column: 1 }
 
-/** Parses `pack.css`. A rule with an error is left out; each error has its line and column. */
+type CssRule = Extract<ReturnType<typeof parse>['stylesheet']['rules'][number], { type: CssTypes.rule }>
+
+// A nested selector is `&` and then conditions or an event: the parent's
+// selector with more conditions. `& [x]` would select a descendant, and
+// pack.css has no descendants.
+function nestedSelector(text: string, parent: Selector): Parsed<Selector> {
+  if (!text.startsWith('&') || /^&\s/.test(text)) {
+    return no(`${JSON.stringify(text)}: a nested selector is & and then conditions or an event, for example &[state=working]`)
+  }
+  const own = parseOneSelector(text.slice(1))
+  if (!own.ok) return own
+  const attrs: Record<string, string> = { ...parent.attrs }
+  for (const [key, value] of Object.entries(own.value.attrs)) {
+    if (Object.hasOwn(attrs, key)) return no(`${JSON.stringify(text)} names ${key} again under a rule that names it, so it never holds`)
+    attrs[key] = value
+  }
+  if (parent.event !== null && own.value.event !== null)
+    return no(`${JSON.stringify(text)} waits for a second event; one event comes at a time`)
+  return ok({ attrs, event: own.value.event ?? parent.event })
+}
+
+function readRule(node: CssRule, parent: Selector | null, rules: Rule[], errors: RuleError[]): void {
+  const at = node.position?.start ?? START
+  const selectors = node.selectors.map(text => (parent === null ? parseOneSelector(text) : nestedSelector(text, parent)))
+  const bad = selectors.find((s): s is Extract<Parsed<Selector>, { ok: false }> => !s.ok)
+  if (bad !== undefined) {
+    errors.push({ ...at, message: bad.message })
+    return
+  }
+  for (const parsed of selectors) {
+    if (!parsed.ok) continue
+    const selector = parsed.value
+    const set: Mutable = { pose: {}, lock: [] }
+    const places: Record<string, Place> = {}
+    const nested: CssRule[] = []
+    let failed = false
+    for (const decl of node.declarations) {
+      const place = decl.position?.start ?? at
+      if (decl.type === CssTypes.comment) continue
+      if (decl.type === CssTypes.rule) {
+        nested.push(decl)
+        continue
+      }
+      if (decl.type !== CssTypes.declaration) {
+        errors.push({ ...place, message: `@${decl.type} is not supported: a rule holds declarations and nested rules` })
+        failed = true
+        continue
+      }
+      // CSS lets a later declaration win; here the intent must be one line.
+      if (Object.hasOwn(places, decl.property)) {
+        errors.push({ ...place, message: `${decl.property} is set twice in this rule` })
+        failed = true
+        continue
+      }
+      places[decl.property] = place
+      const problem = declare(set, decl.property, decl.value.trim(), selector.event)
+      if (problem !== null) {
+        errors.push({ ...place, message: problem })
+        failed = true
+      }
+    }
+    if (!failed) {
+      const specificity = Object.keys(selector.attrs).length + (selector.event === null ? 0 : 1)
+      rules.push({ selector, specificity, set, at, places })
+    }
+    // As in CSS, a nested rule comes after its parent: on a tie it wins.
+    for (const child of nested) readRule(child, selector, rules, errors)
+  }
+}
+
+/**
+ * Parses `pack.css`. A rule with an error is left out; each error has its
+ * line and column. A nested rule (`&[state=working] { ... }` in a rule) is
+ * one more rule: the parent's conditions and its own.
+ */
 export function parseRules(text: string): { rules: readonly Rule[]; errors: readonly RuleError[] } {
   const sheet = parse(text, { silent: true })
   const errors: RuleError[] = (sheet.stylesheet.parsingErrors ?? []).map(e => ({ line: e.line, column: e.column, message: e.reason }))
   const rules: Rule[] = []
   for (const node of sheet.stylesheet.rules) {
-    const at = node.position?.start ?? START
     if (node.type === CssTypes.comment) continue
     if (node.type !== CssTypes.rule) {
-      errors.push({ ...at, message: `@${node.type} is not supported: pack.css takes only rules` })
+      errors.push({ ...(node.position?.start ?? START), message: `@${node.type} is not supported: pack.css takes only rules` })
       continue
     }
-    const selectors = node.selectors.map(parseOneSelector)
-    const bad = selectors.find((s): s is Extract<Parsed<Selector>, { ok: false }> => !s.ok)
-    if (bad !== undefined) {
-      errors.push({ ...at, message: bad.message })
-      continue
-    }
-    for (const parsed of selectors) {
-      if (!parsed.ok) continue
-      const selector = parsed.value
-      const set: Mutable = { pose: {}, lock: [] }
-      const places: Record<string, Place> = {}
-      let failed = false
-      for (const decl of node.declarations) {
-        const place = decl.position?.start ?? at
-        if (decl.type === CssTypes.comment) continue
-        if (decl.type !== CssTypes.declaration) {
-          errors.push({ ...place, message: 'a rule holds only declarations' })
-          failed = true
-          continue
-        }
-        // CSS lets a later declaration win; here the intent must be one line.
-        if (Object.hasOwn(places, decl.property)) {
-          errors.push({ ...place, message: `${decl.property} is set twice in this rule` })
-          failed = true
-          continue
-        }
-        places[decl.property] = place
-        const problem = declare(set, decl.property, decl.value.trim(), selector.event)
-        if (problem !== null) {
-          errors.push({ ...place, message: problem })
-          failed = true
-        }
-      }
-      if (failed) continue
-      const specificity = Object.keys(selector.attrs).length + (selector.event === null ? 0 : 1)
-      rules.push({ selector, specificity, set, at, places })
-    }
+    readRule(node, null, rules, errors)
   }
   return { rules, errors }
 }
@@ -249,8 +282,8 @@ export function checkRules(pack: Pack, rules: readonly Rule[]): readonly RuleErr
     }
   }
   const channel = (name: string, place: Place): boolean => {
-    if (Object.hasOwn(pack.groups, name)) return true
-    errors.push({ ...place, message: `${JSON.stringify(name)} is not a group, so it is not a channel` })
+    if (isChannel(pack, name)) return true
+    errors.push({ ...place, message: `${JSON.stringify(name)} is not figure, a group, or a part slot, so it is not a channel` })
     return false
   }
   for (const { selector, set, at, places } of rules) {
@@ -270,8 +303,8 @@ export function checkRules(pack: Pack, rules: readonly Rule[]): readonly RuleErr
     }
     for (const [name, value] of Object.entries(set.pose)) {
       const place = places[name] ?? at
-      if (channel(name, place) && value !== BASE && own(own(pack.groups, name)?.variants, value) === undefined) {
-        errors.push({ ...place, message: `${name}: ${JSON.stringify(value)} is not ${BASE} or a variant in groups.${name}.variants` })
+      if (channel(name, place) && !isChannelValue(pack, name, value)) {
+        errors.push({ ...place, message: `${name}: ${JSON.stringify(value)} is not ${BASE} or a variant of ${name}` })
       }
     }
     for (const name of set.lock) channel(name, places.lock ?? at)

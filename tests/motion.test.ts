@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { AgentRow } from '../hooks/core/agents.ts'
+import type { Look } from '../hooks/core/character.ts'
 import { characterPose, characterState, ENTER_MS, frameAt } from '../hooks/core/character.ts'
-import { BUILTIN_MOTIONS, motionOf } from '../hooks/core/pack/motions.ts'
+import { BUILTIN_MOTIONS } from '../hooks/core/pack/motions.ts'
 import { compose, parsePack } from '../hooks/core/pack/pack.ts'
 import type { Motion, Pack, Part, Pose } from '../hooks/core/pack/pack.ts'
+import { motionOf } from '../hooks/core/pack/style.ts'
 import { builtinPack } from '../hooks/view/avatar.ts'
 import { validPack } from './fixtures/packs.ts'
 
@@ -30,6 +32,10 @@ function row(fields: Partial<AgentRow>): AgentRow {
     endedAt: null,
     ...fields,
   }
+}
+
+function lookOf(target: Pack, parts: Readonly<Record<string, string>>, rules: Look['rules'] = []): Look {
+  return { pack: target, rules, role: null, parts }
 }
 
 function pixels(pose: Pose, target: Pack = pack): readonly (number | null)[] {
@@ -124,7 +130,7 @@ describe('a part motion', () => {
       [small, [2, 0], 'running'],
       [large, [5, 3], 'completed'],
     ] as const) {
-      const { pose } = characterPose(body, { held: 'glass' }, row({ status, statusAt: 0 }), 500, 'full')
+      const { pose } = characterPose(lookOf(body, { held: 'glass' }), row({ status, statusAt: 0 }), 500, 'full')
       const { pixels: drawn, width } = compose(body, { held: 'glass' }, pose)
       expect(drawn[ay * width + ax + 1]).toBe(BLUE)
       expect(drawn.filter(p => p === BLUE)).toHaveLength(1)
@@ -214,11 +220,11 @@ describe('motions', () => {
   })
 
   test('a state uses the pack motion, then the built-in motion; finished stands still', () => {
-    const minimal = builtinPack('minimal').pack
-    expect(motionOf(minimal, 'working')).toBe(minimal.motions!.walk!)
-    expect(motionOf(minimal, 'failed')).toBe(minimal.motions!.slump!)
-    expect(motionOf(minimal, 'idle')).toBe(BUILTIN_MOTIONS.bob!)
-    expect(motionOf(minimal, 'finished')).toBeNull()
+    const { pack: minimal, rules } = builtinPack('minimal')
+    expect(motionOf(minimal, 'working', rules)).toBe(minimal.motions!.walk!)
+    expect(motionOf(minimal, 'failed', rules)).toBe(minimal.motions!.slump!)
+    expect(motionOf(minimal, 'idle', rules)).toBe(BUILTIN_MOTIONS.bob!)
+    expect(motionOf(minimal, 'finished', rules)).toBeNull()
   })
 
   test('a states entry can point a state at a built-in motion', () => {
@@ -227,40 +233,48 @@ describe('motions', () => {
 })
 
 describe('characterPose', () => {
-  const minimal = builtinPack('minimal').pack
+  const { pack: minimal, rules } = builtinPack('minimal')
   const none = {}
 
   test('a working character moves at the frame rate of its motion', () => {
     // The walk changes frame each 1000 / 6 ms after the spawn: at 5 000 ms, the next change is at 5 167 ms.
-    expect(characterPose(minimal, none, row({}), 5_000, 'full').nextAt).toBe(5_167)
+    expect(characterPose(lookOf(minimal, none, rules), row({}), 5_000, 'full').nextAt).toBe(5_167)
   })
 
   test('the fail pose plays once from the status change and then stands still', () => {
     const failed = row({ status: 'failed', statusAt: 10_000, endedAt: 10_000 })
-    expect(characterPose(minimal, none, failed, 10_100, 'full')).toEqual(expect.objectContaining({ key: 'failed:0', nextAt: 10_250 }))
-    expect(characterPose(minimal, none, failed, 60_000, 'full')).toEqual(expect.objectContaining({ key: 'failed:1', nextAt: null }))
+    expect(characterPose(lookOf(minimal, none, rules), failed, 10_100, 'full')).toEqual(
+      expect.objectContaining({ key: '-:failed|0', nextAt: 10_250 }),
+    )
+    expect(characterPose(lookOf(minimal, none, rules), failed, 60_000, 'full')).toEqual(
+      expect.objectContaining({ key: '-:failed|1', nextAt: null }),
+    )
   })
 
   test('the end of the entrance is a frame change only when working has another motion', () => {
     const still = { ...minimal, states: { entering: 'bob', working: 'bob' } }
     const other = { ...minimal, states: { entering: 'bob', working: 'swing' } }
     // Reduced motion: only the end of the entrance can change the pose.
-    expect(characterPose(still, none, row({}), 100, 'reduced').nextAt).toBeNull()
-    expect(characterPose(other, none, row({}), 100, 'reduced').nextAt).toBe(ENTER_MS)
+    expect(characterPose(lookOf(still, none), row({}), 100, 'reduced').nextAt).toBeNull()
+    expect(characterPose(lookOf(other, none), row({}), 100, 'reduced').nextAt).toBe(ENTER_MS)
   })
 
   test('a finished character stands still and draws the plain character', () => {
-    const finished = characterPose(minimal, none, row({ status: 'completed' }), 5_000, 'full')
-    expect(finished).toEqual({ key: 'still', pose: {}, nextAt: null })
+    const finished = characterPose(lookOf(minimal, none, rules), row({ status: 'completed' }), 5_000, 'full')
+    expect(finished).toEqual({ key: '-:finished', pose: { body: { swap: {} } }, nextAt: null })
   })
 
   test('off mode draws the plain character in every state', () => {
-    expect(characterPose(minimal, none, row({ status: 'failed' }), 5_000, 'off')).toEqual({ key: 'still', pose: {}, nextAt: null })
+    expect(characterPose(lookOf(minimal, none, rules), row({ status: 'failed' }), 5_000, 'off')).toEqual({
+      key: '-:failed',
+      pose: { body: { swap: {} } },
+      nextAt: null,
+    })
   })
 
   test('reduced mode keeps the fail pose but never moves', () => {
-    const pose = characterPose(minimal, none, row({ status: 'failed', statusAt: 4_900, endedAt: 4_900 }), 5_000, 'reduced')
-    expect([pose.key, pose.nextAt]).toEqual(['failed:1', null])
+    const pose = characterPose(lookOf(minimal, none, rules), row({ status: 'failed', statusAt: 4_900, endedAt: 4_900 }), 5_000, 'reduced')
+    expect([pose.key, pose.nextAt]).toEqual(['-:failed|1', null])
   })
 
   test('each frame of each minimal motion draws different pixels than the plain character', () => {

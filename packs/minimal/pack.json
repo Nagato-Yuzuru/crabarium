@@ -131,9 +131,6 @@
       ]
     }
   },
-  "states": {
-    "failed": "slump"
-  },
   "roles": {
     "explorer": [
       {

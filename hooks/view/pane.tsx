@@ -108,8 +108,8 @@ export function registerPane(on: On, mode: MotionMode): void {
     const agentCharacters = layout.characters.flatMap(({ id, size }): DrawnCharacter[] => {
       const row = rows.get(id)
       if (row === undefined) return []
-      const { parts } = selectOutfit(active.pack, { id, type: row.type, description: row.description }, choice)
-      return [{ id, size, row, pack: active.pack, parts }]
+      const { role, parts } = selectOutfit(active.pack, { id, type: row.type, description: row.description }, choice)
+      return [{ id, size, row, look: { pack: active.pack, rules: active.rules, role, parts } }]
     })
     const shown = previewModel(entries, shownPreview, now, layout.steps.character ? 'full' : null)
     // A preview hides the agents, so their Rasters are not mounted: a blit to one would stop the loop.

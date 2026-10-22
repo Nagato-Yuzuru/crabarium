@@ -1,7 +1,7 @@
 import { isRole } from '../../../hooks/core/avatar/select.ts'
 // Library parts: ready-made hats, held items, and back items that fit any
 // body with the anchor they name. Pure: the caller reads and writes files.
-import { parsePack } from '../../../hooks/core/pack/pack.ts'
+import { parsePack, variantRows } from '../../../hooks/core/pack/pack.ts'
 import type { Outfit, Pack, ParseResult, Part, Role } from '../../../hooks/core/pack/pack.ts'
 import { ROLES } from '../../../hooks/core/pack/schema.ts'
 
@@ -38,7 +38,7 @@ export function isLibraryPart(value: unknown): value is LibraryPart {
 
 /** The palette keys that a part's rows use but its own palette does not give. A library part must give them all. */
 export function missingKeys(part: Part): string[] {
-  const keys = new Set([part.rows, ...Object.values(part.variants ?? {})].flatMap(rows => rows.flatMap(row => [...row])))
+  const keys = new Set([part.rows, ...Object.values(part.variants ?? {}).map(variantRows)].flatMap(rows => rows.flatMap(row => [...row])))
   keys.delete('.')
   return [...keys].filter(key => part.palette?.[key] === undefined)
 }
