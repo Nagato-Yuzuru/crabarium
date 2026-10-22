@@ -17,20 +17,8 @@
       "groupName": "development tools"
     },
     {
-      "description": "Merge low-risk updates when the required CI check passes.",
-      "matchUpdateTypes": ["patch", "digest", "pin", "lockFileMaintenance"],
-      "automerge": true
-    },
-    {
-      "description": "Actions are pinned by digest, so a green run is enough for minor releases.",
-      "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["minor"],
-      "automerge": true
-    },
-    {
-      "description": "CI tests the plugin against the new engine, so a green run is enough for minor releases.",
-      "matchPackageNames": ["@anthropic-ai/claude-code"],
-      "matchUpdateTypes": ["minor"],
+      "description": "Every dependency is a development tool and CI runs the full verify on the new versions, so a green run is enough below a major release. A group merges only when all of its updates can merge, so the rule covers the whole group.",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "lockFileMaintenance"],
       "automerge": true
     }
   ]
