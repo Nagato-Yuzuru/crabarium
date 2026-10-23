@@ -7,6 +7,8 @@ minimumReleaseAgeExclude:
   # The engine floor in hooks/core/version.ts tracks the newest release.
   - '@anthropic-ai/claude-code'
   - '@anthropic-ai/claude-code-*'
+  # Renovate security update: vite-plus@1.3.0
+  - vite-plus@1.3.0
 
 allowBuilds:
   '@anthropic-ai/claude-code': true
