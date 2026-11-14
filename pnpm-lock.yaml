@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@adobe/css-tools':
-        specifier: 4.5.0
-        version: 4.5.0
+        specifier: 5.0.0
+        version: 5.0.0
       '@anthropic-ai/claude-code':
         specifier: 2.1.325
         version: 2.1.325
@@ -29,8 +29,8 @@ importers:
 
 packages:
 
-  '@adobe/css-tools@4.5.0':
-    resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
+  '@adobe/css-tools@5.0.0':
+    resolution: {integrity: sha512-HNzgFxupiKEL0rCMkIcjJaqktW91V9hz/keDROHjvzVWA3AKG557RoeD3lnhFNZtRqzJS0cMvoOPO7VOYyBHDg==}
 
   '@anthropic-ai/claude-code-darwin-arm64@2.1.325':
     resolution: {integrity: sha512-Ds1f1B+qy2BWDI+VnmDHwkNyTbXCwFrBtrinPD95RBmUubFJu9nCzMgn+wrg5VwwF6vtkkzGexogneZIYZKb6A==}
@@ -870,6 +870,12 @@ packages:
     resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
     engines: {node: '>=14.19.0'}
 
+  postcss-safe-parser@7.1.0:
+    resolution: {integrity: sha512-1WzZxRLaAFwEh6Do+zyGpjWV3nGJNxxhuh7Ubu/q1ICImMgZJnLwhoaEpRbG4pJppp2Y1ncL9ffA2f+LhrefQg==}
+    engines: {node: '>=18.0'}
+    peerDependencies:
+      postcss: ^8.4.31
+
   postcss@8.5.32:
     resolution: {integrity: sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==}
     engines: {node: ^10 || ^12 || >=14}
@@ -1007,7 +1013,10 @@ packages:
 
 snapshots:
 
-  '@adobe/css-tools@4.5.0': {}
+  '@adobe/css-tools@5.0.0':
+    dependencies:
+      postcss: 8.5.32
+      postcss-safe-parser: 7.1.0(postcss@8.5.32)
 
   '@anthropic-ai/claude-code-darwin-arm64@2.1.325':
     optional: true
@@ -1566,6 +1575,10 @@ snapshots:
   picomatch@4.0.7: {}
 
   pngjs@7.0.0: {}
+
+  postcss-safe-parser@7.1.0(postcss@8.5.32):
+    dependencies:
+      postcss: 8.5.32
 
   postcss@8.5.32:
     dependencies:
