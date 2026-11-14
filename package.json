@@ -16,7 +16,7 @@
     "verify": "pnpm check && pnpm validate && pnpm test"
   },
   "devDependencies": {
-    "@adobe/css-tools": "4.5.0",
+    "@adobe/css-tools": "5.0.0",
     "@anthropic-ai/claude-code": "2.1.325",
     "@types/node": "24.19.2",
     "ajv": "8.20.0",
